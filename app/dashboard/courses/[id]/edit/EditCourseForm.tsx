@@ -17,13 +17,13 @@ type LessonRow = {
 };
 type QuestionOptionRow = { text: string; isCorrect: boolean };
 type QuestionRow = { type: "MULTIPLE_CHOICE" | "TRUE_FALSE"; questionText: string; options: QuestionOptionRow[] };
-type QuizRow = { title: string; timeLimitMinutes: string; questions: QuestionRow[] };
+type QuizRow = { title: string; timeLimitMinutes: string; passingScore: string; questions: QuestionRow[] };
 
 export type ContentOrderEntry = { type: "lesson"; index: number } | { type: "quiz"; index: number };
 
 /** API payloads may include legacy ESSAY questions. */
 type InitialQuestionRow = { type: "MULTIPLE_CHOICE" | "ESSAY" | "TRUE_FALSE"; questionText: string; options?: QuestionOptionRow[] };
-type InitialQuizRow = { title: string; timeLimitMinutes?: number | null; questions: InitialQuestionRow[] };
+type InitialQuizRow = { title: string; timeLimitMinutes?: number | null; passingScore?: number | null; questions: InitialQuestionRow[] };
 
 type InitialData = {
   id: string;
@@ -40,6 +40,10 @@ type InitialData = {
   isPublished: boolean;
   maxQuizAttempts: number | null;
   categoryId: string;
+  accessType?: "lifetime" | "duration_days" | "subscription_only";
+  accessDurationDays?: number | null;
+  deliveryMode?: "recorded" | "live" | "hybrid";
+  isVisible?: boolean;
   lessons: LessonRow[];
   quizzes: InitialQuizRow[];
   contentOrder: ContentOrderEntry[];
@@ -53,7 +57,7 @@ const defaultLesson: LessonRow = {
   attachments: [],
   acceptsHomework: false,
 };
-const defaultQuiz: QuizRow = { title: "", timeLimitMinutes: "", questions: [{ type: "MULTIPLE_CHOICE", questionText: "", options: [{ text: "", isCorrect: false }] }] };
+const defaultQuiz: QuizRow = { title: "", timeLimitMinutes: "", passingScore: "", questions: [{ type: "MULTIPLE_CHOICE", questionText: "", options: [{ text: "", isCorrect: false }] }] };
 
 export function EditCourseForm({ courseId, initialData }: { courseId: string; initialData: InitialData }) {
   const router = useRouter();
@@ -82,6 +86,10 @@ export function EditCourseForm({ courseId, initialData }: { courseId: string; in
     categoryId: initialData.categoryId ?? "",
     categoryNameAr: "",
     categoryNameEn: "",
+    accessType: (initialData.accessType ?? "lifetime") as "lifetime" | "duration_days" | "subscription_only",
+    accessDurationDays: initialData.accessDurationDays != null ? String(initialData.accessDurationDays) : "",
+    deliveryMode: (initialData.deliveryMode ?? "recorded") as "recorded" | "live" | "hybrid",
+    isVisible: initialData.isVisible ?? true,
   });
   const [lessons, setLessons] = useState<LessonRow[]>(
     initialData.lessons.length > 0
@@ -148,6 +156,7 @@ export function EditCourseForm({ courseId, initialData }: { courseId: string; in
       ? initialData.quizzes.map((q) => ({
           title: q.title,
           timeLimitMinutes: q.timeLimitMinutes != null ? String(q.timeLimitMinutes) : "",
+          passingScore: q.passingScore != null ? String(q.passingScore) : "",
           questions: q.questions.length > 0
             ? q.questions.map((qt) => {
                 const type = qt.type === "ESSAY" ? "MULTIPLE_CHOICE" as const : qt.type;
@@ -263,6 +272,9 @@ export function EditCourseForm({ courseId, initialData }: { courseId: string; in
   function updateQuizTimeLimit(qi: number, value: string) {
     setQuizzes((q) => q.map((x, i) => (i === qi ? { ...x, timeLimitMinutes: value } : x)));
   }
+  function updateQuizPassingScore(qi: number, value: string) {
+    setQuizzes((q) => q.map((x, i) => (i === qi ? { ...x, passingScore: value } : x)));
+  }
   function addQuestion(qi: number) {
     setQuizzes((q) =>
       q.map((x, i) =>
@@ -359,6 +371,10 @@ export function EditCourseForm({ courseId, initialData }: { courseId: string; in
           const n = parseInt(q.timeLimitMinutes, 10);
           return Number.isFinite(n) && n >= 1 ? n : undefined;
         })(),
+        passingScore: (() => {
+          const n = parseInt(q.passingScore, 10);
+          return Number.isFinite(n) && n >= 0 && n <= 100 ? n : undefined;
+        })(),
         questions: q.questions
           .filter((qt) => qt.questionText.trim())
           .map((qt) => ({
@@ -403,6 +419,13 @@ export function EditCourseForm({ courseId, initialData }: { courseId: string; in
       ...(form.categoryNameAr.trim() || form.categoryNameEn.trim()
         ? { categoryNameAr: form.categoryNameAr.trim(), categoryNameEn: form.categoryNameEn.trim() }
         : form.categoryId ? { categoryId: form.categoryId } : { categoryId: null }),
+      accessType: form.accessType,
+      accessDurationDays:
+        form.accessType === "duration_days" && form.accessDurationDays.trim()
+          ? parseInt(form.accessDurationDays, 10)
+          : null,
+      deliveryMode: form.deliveryMode,
+      isVisible: form.isVisible,
       lessons: validLessons.map((l) => ({
         title: l.title.trim(),
         videoUrl: l.videoUrl.trim() || undefined,
@@ -608,6 +631,59 @@ export function EditCourseForm({ courseId, initialData }: { courseId: string; in
       </section>
 
       <section className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] p-6">
+        <h3 className="mb-4 text-lg font-semibold text-[var(--color-foreground)]">{t(`${Cf}.sectionAccessDelivery`)}</h3>
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-[var(--color-foreground)]">{t(`${Cf}.accessTypeLabel`)}</label>
+            <select
+              value={form.accessType}
+              onChange={(e) => setForm((f) => ({ ...f, accessType: e.target.value as typeof f.accessType }))}
+              className="mt-1 w-full rounded-[var(--radius-btn)] border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2"
+            >
+              <option value="lifetime">{t(`${Cf}.accessTypeLifetime`)}</option>
+              <option value="duration_days">{t(`${Cf}.accessTypeDurationDays`)}</option>
+              <option value="subscription_only">{t(`${Cf}.accessTypeSubscriptionOnly`)}</option>
+            </select>
+          </div>
+          {form.accessType === "duration_days" && (
+            <div>
+              <label className="block text-sm font-medium text-[var(--color-foreground)]">{t(`${Cf}.accessDurationDaysLabel`)}</label>
+              <input
+                type="number"
+                min="1"
+                value={form.accessDurationDays}
+                onChange={(e) => setForm((f) => ({ ...f, accessDurationDays: e.target.value }))}
+                placeholder={t(`${Cf}.accessDurationDaysPlaceholder`)}
+                className="mt-1 w-full max-w-xs rounded-[var(--radius-btn)] border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2"
+              />
+            </div>
+          )}
+          <div>
+            <label className="block text-sm font-medium text-[var(--color-foreground)]">{t(`${Cf}.deliveryModeLabel`)}</label>
+            <select
+              value={form.deliveryMode}
+              onChange={(e) => setForm((f) => ({ ...f, deliveryMode: e.target.value as typeof f.deliveryMode }))}
+              className="mt-1 w-full rounded-[var(--radius-btn)] border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2"
+            >
+              <option value="recorded">{t(`${Cf}.deliveryModeRecorded`)}</option>
+              <option value="live">{t(`${Cf}.deliveryModeLive`)}</option>
+              <option value="hybrid">{t(`${Cf}.deliveryModeHybrid`)}</option>
+            </select>
+          </div>
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={form.isVisible}
+              onChange={(e) => setForm((f) => ({ ...f, isVisible: e.target.checked }))}
+              className="rounded border-[var(--color-border)]"
+            />
+            <span className="text-sm text-[var(--color-foreground)]">{t(`${Cf}.isVisibleLabel`)}</span>
+          </label>
+          <p className="text-xs text-[var(--color-muted)]">{t(`${Cf}.isVisibleHelp`)}</p>
+        </div>
+      </section>
+
+      <section className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] p-6">
         <h3 className="mb-4 text-lg font-semibold text-[var(--color-foreground)]">{t(`${Cf}.lessonsHeading`)}</h3>
         <p className="mb-4 text-sm text-[var(--color-muted)]">{t(`${Cf}.lessonsIntro`)}</p>
         {lessons.map((lesson, i) => (
@@ -623,7 +699,9 @@ export function EditCourseForm({ courseId, initialData }: { courseId: string; in
               <input type="url" value={lesson.videoUrl} onChange={(e) => updateLesson(i, "videoUrl", e.target.value)} placeholder={t(`${Cf}.youtubePlaceholder`)} className="w-full rounded-[var(--radius-btn)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm" />
               <div>
                 <label className="block text-xs text-[var(--color-muted)]">{t(`${Cf}.lessonPdfOptional`)}</label>
-                {lesson.attachments.map((att, ai) => (
+                {lesson.attachments.map((att, ai) => {
+                  const isLinkKind = ["link", "youtube", "drive", "url"].includes(att.fileType);
+                  return (
                   <div key={ai} className="mt-2 rounded-[var(--radius-btn)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
                     <div className="flex flex-wrap items-center gap-2">
                       <input
@@ -633,7 +711,34 @@ export function EditCourseForm({ courseId, initialData }: { courseId: string; in
                         placeholder={t(`${Cf}.attachmentTitlePlaceholder`)}
                         className="min-w-[10rem] flex-1 rounded-[var(--radius-btn)] border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2 text-sm"
                       />
-                      {att.fileUrl ? (
+                      <select
+                        value={isLinkKind ? att.fileType : "other"}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          updateAttachment(i, ai, "fileType", v);
+                          if (v !== "other" && !["link", "youtube", "drive", "url"].includes(att.fileType)) {
+                            updateAttachment(i, ai, "fileUrl", "");
+                          }
+                        }}
+                        className="rounded-[var(--radius-btn)] border border-[var(--color-border)] bg-[var(--color-background)] px-2 py-2 text-sm"
+                      >
+                        <option value="other">{t(`${Cf}.attachmentTypeFile`)}</option>
+                        <option value="link">{t(`${Cf}.attachmentTypeLink`)}</option>
+                        <option value="youtube">{t(`${Cf}.attachmentTypeYoutube`)}</option>
+                        <option value="drive">{t(`${Cf}.attachmentTypeDrive`)}</option>
+                      </select>
+                      {isLinkKind ? (
+                        <>
+                          <input
+                            type="url"
+                            value={att.fileUrl}
+                            onChange={(e) => updateAttachment(i, ai, "fileUrl", e.target.value)}
+                            placeholder={t(`${Cf}.attachmentUrlPlaceholder`)}
+                            className="min-w-[12rem] flex-1 rounded-[var(--radius-btn)] border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2 text-sm"
+                          />
+                          <button type="button" onClick={() => removeAttachment(i, ai)} className="text-sm text-red-600 hover:underline">{t(`${Cf}.remove`)}</button>
+                        </>
+                      ) : att.fileUrl ? (
                         <>
                           <a href={att.fileUrl} target="_blank" rel="noopener noreferrer" className="text-sm text-[var(--color-primary)] hover:underline">{t(`${Cf}.viewPdf`)}</a>
                           {att.fileName ? <span className="text-xs text-[var(--color-muted)]">{att.fileName}</span> : null}
@@ -669,7 +774,8 @@ export function EditCourseForm({ courseId, initialData }: { courseId: string; in
                       )}
                     </div>
                   </div>
-                ))}
+                  );
+                })}
                 <button type="button" onClick={() => addAttachment(i)} className="mt-2 rounded-[var(--radius-btn)] border border-[var(--color-border)] px-3 py-2 text-sm font-medium">
                   {t(`${Cf}.addAttachmentBtn`)}
                 </button>
@@ -707,6 +813,19 @@ export function EditCourseForm({ courseId, initialData }: { courseId: string; in
                 className="mt-1 w-full max-w-xs rounded-[var(--radius-btn)] border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2"
               />
               <p className="mt-1 text-xs text-[var(--color-muted)]">{t(`${Cf}.quizTimeHelp`)}</p>
+            </div>
+            <div className="mb-3">
+              <label className="block text-sm font-medium text-[var(--color-foreground)]">{t(`${Cf}.quizPassingScoreLabel`)}</label>
+              <input
+                type="number"
+                min="0"
+                max="100"
+                placeholder={t(`${Cf}.quizPassingScorePlaceholder`)}
+                value={quiz.passingScore}
+                onChange={(e) => updateQuizPassingScore(qi, e.target.value)}
+                className="mt-1 w-full max-w-xs rounded-[var(--radius-btn)] border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2"
+              />
+              <p className="mt-1 text-xs text-[var(--color-muted)]">{t(`${Cf}.quizPassingScoreHelp`)}</p>
             </div>
             {quiz.questions.map((q, qti) => (
               <div key={qti} className="mb-4 rounded border border-[var(--color-border)] bg-[var(--color-surface)] p-3">

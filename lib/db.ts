@@ -2565,10 +2565,27 @@ async function ensurePlatformSubscriptionSchema(): Promise<void> {
         is_active BOOLEAN NOT NULL DEFAULT true,
         sort_order INT NOT NULL DEFAULT 0,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        CONSTRAINT subscription_plan_duration_chk CHECK (duration_kind IN ('week', 'month', 'year'))
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )
     `;
+    await sql`ALTER TABLE "SubscriptionPlan" ADD COLUMN IF NOT EXISTS duration_value INT NOT NULL DEFAULT 1`;
+    // إزالة قيد المدد القديم إن وُجد لتسمح بـ months_3/6/9
+    try {
+      await sql`
+        DO $do$
+        BEGIN
+          IF EXISTS (
+            SELECT 1 FROM pg_constraint
+            WHERE conname = 'subscription_plan_duration_chk'
+          ) THEN
+            ALTER TABLE "SubscriptionPlan" DROP CONSTRAINT subscription_plan_duration_chk;
+          END IF;
+        END
+        $do$
+      `;
+    } catch {
+      /* تجاهل */
+    }
     await sql`
       CREATE TABLE IF NOT EXISTS "UserPlatformSubscription" (
         id TEXT PRIMARY KEY,
@@ -3074,11 +3091,15 @@ export type SubscriptionPlanPublic = {
 
 export type SubscriptionPlanAdmin = SubscriptionPlanPublic & { isActive: boolean };
 
-function addSubscriptionDuration(from: Date, kind: SubscriptionDurationKind): Date {
+function addSubscriptionDuration(from: Date, kind: SubscriptionDurationKind, durationValue = 1): Date {
   const d = new Date(from.getTime());
-  if (kind === "week") d.setUTCDate(d.getUTCDate() + 7);
-  else if (kind === "month") d.setUTCDate(d.getUTCDate() + 30);
-  else d.setUTCDate(d.getUTCDate() + 365);
+  const n = Math.max(1, durationValue || 1);
+  if (kind === "week") d.setUTCDate(d.getUTCDate() + 7 * n);
+  else if (kind === "month") d.setUTCDate(d.getUTCDate() + 30 * n);
+  else if (kind === "months_3") d.setUTCDate(d.getUTCDate() + 90 * n);
+  else if (kind === "months_6") d.setUTCDate(d.getUTCDate() + 180 * n);
+  else if (kind === "months_9") d.setUTCDate(d.getUTCDate() + 270 * n);
+  else d.setUTCDate(d.getUTCDate() + 365 * n);
   return d;
 }
 
@@ -3133,20 +3154,39 @@ export async function createSubscriptionPlan(data: {
   await ensurePlatformSubscriptionSchema();
   const id = generateId();
   const dk = data.duration_kind;
-  if (dk !== "week" && dk !== "month" && dk !== "year") throw new Error("مدة غير صالحة");
-  await sql`
-    INSERT INTO "SubscriptionPlan" (id, name, description, image_url, duration_kind, price, is_active, sort_order)
-    VALUES (
-      ${id},
-      ${data.name.trim()},
-      ${data.description.trim() || ""},
-      ${data.image_url?.trim() || null},
-      ${dk},
-      ${Math.max(0, data.price)},
-      ${data.is_active !== false},
-      0
-    )
-  `;
+  const allowed: SubscriptionDurationKind[] = ["week", "month", "year", "months_3", "months_6", "months_9"];
+  if (!allowed.includes(dk)) throw new Error("مدة غير صالحة");
+  const durationValue = Math.max(1, Number((data as { duration_value?: number }).duration_value) || 1);
+  try {
+    await sql`
+      INSERT INTO "SubscriptionPlan" (id, name, description, image_url, duration_kind, duration_value, price, is_active, sort_order)
+      VALUES (
+        ${id},
+        ${data.name.trim()},
+        ${data.description.trim() || ""},
+        ${data.image_url?.trim() || null},
+        ${dk},
+        ${durationValue},
+        ${Math.max(0, data.price)},
+        ${data.is_active !== false},
+        0
+      )
+    `;
+  } catch {
+    await sql`
+      INSERT INTO "SubscriptionPlan" (id, name, description, image_url, duration_kind, price, is_active, sort_order)
+      VALUES (
+        ${id},
+        ${data.name.trim()},
+        ${data.description.trim() || ""},
+        ${data.image_url?.trim() || null},
+        ${dk},
+        ${Math.max(0, data.price)},
+        ${data.is_active !== false},
+        0
+      )
+    `;
+  }
   return { id };
 }
 
@@ -3169,8 +3209,17 @@ export async function updateSubscriptionPlan(
     await sql`UPDATE "SubscriptionPlan" SET image_url = ${data.image_url?.trim() || null}, updated_at = NOW() WHERE id = ${id}`;
   if (data.duration_kind !== undefined) {
     const dk = data.duration_kind;
-    if (dk !== "week" && dk !== "month" && dk !== "year") throw new Error("مدة غير صالحة");
+    const allowed: SubscriptionDurationKind[] = ["week", "month", "year", "months_3", "months_6", "months_9"];
+    if (!allowed.includes(dk)) throw new Error("مدة غير صالحة");
     await sql`UPDATE "SubscriptionPlan" SET duration_kind = ${dk}, updated_at = NOW() WHERE id = ${id}`;
+  }
+  if ((data as { duration_value?: number }).duration_value !== undefined) {
+    const dv = Math.max(1, Number((data as { duration_value?: number }).duration_value) || 1);
+    try {
+      await sql`UPDATE "SubscriptionPlan" SET duration_value = ${dv}, updated_at = NOW() WHERE id = ${id}`;
+    } catch {
+      /* العمود قد لا يكون موجوداً بعد */
+    }
   }
   if (data.price !== undefined) await sql`UPDATE "SubscriptionPlan" SET price = ${Math.max(0, data.price)}, updated_at = NOW() WHERE id = ${id}`;
   if (data.is_active !== undefined) await sql`UPDATE "SubscriptionPlan" SET is_active = ${data.is_active}, updated_at = NOW() WHERE id = ${id}`;
@@ -3187,6 +3236,7 @@ export async function getSubscriptionPlanById(id: string): Promise<{
   description: string;
   image_url: string | null;
   duration_kind: SubscriptionDurationKind;
+  duration_value: number;
   price: number;
   is_active: boolean;
 } | null> {
@@ -3200,6 +3250,7 @@ export async function getSubscriptionPlanById(id: string): Promise<{
     description: String(r.description ?? ""),
     image_url: r.image_url ? String(r.image_url) : null,
     duration_kind: String(r.duration_kind) as SubscriptionDurationKind,
+    duration_value: Number(r.duration_value ?? 1) || 1,
     price: Number(r.price ?? 0),
     is_active: Boolean(r.is_active),
   };
@@ -3232,11 +3283,10 @@ export async function userHasActivePlatformSubscriptionForPaidCourse(userId: str
   return price > 0;
 }
 
-/** تسجيل في الدورة أو اشتراك منصة نشط على دورة مدفوعة منشورة */
+/** تسجيل في الدورة (غير منتهٍ) أو اشتراك منصة نشط على دورة مدفوعة منشورة */
 export async function hasFullCourseAccessAsStudent(userId: string, courseId: string): Promise<boolean> {
-  const en = await getEnrollment(userId, courseId);
-  if (en) return true;
-  return userHasActivePlatformSubscriptionForPaidCourse(userId, courseId);
+  const { userHasValidCourseAccess } = await import("./lms-spec-db");
+  return userHasValidCourseAccess(userId, courseId);
 }
 
 export async function getLatestPlatformSubscriptionExpiry(userId: string): Promise<Date | null> {
@@ -3264,20 +3314,43 @@ export async function purchasePlatformSubscription(userId: string, planId: strin
   if (user.role !== "STUDENT") throw new Error("الاشتراك متاح للطلاب فقط");
 
   if (await userHasActivePlatformSubscription(userId)) {
-    const exp = await getLatestPlatformSubscriptionExpiry(userId);
-    const expLine = exp
-      ? `ينتهي اشتراكك الحالي في ${new Intl.DateTimeFormat("ar-EG", { dateStyle: "medium", timeStyle: "short" }).format(exp)}. `
-      : "";
-    throw new Error(
-      `${expLine}أنت مشترك في المنصة بالفعل ولا تحتاج لدفع مرة أخرى إلا بعد انتهاء هذه المدة.`,
-    );
+    // تجديد: تمديد من تاريخ الانتهاء الحالي
+    const currentExp = await getLatestPlatformSubscriptionExpiry(userId);
+    const balance = Number(user.balance) || 0;
+    if (price > 0 && balance < price) throw new Error("رصيدك غير كافٍ لتجديد هذه الباقة");
+    const from = currentExp && currentExp.getTime() > Date.now() ? currentExp : new Date();
+    const durationValue = Number((plan as { duration_value?: number }).duration_value) || 1;
+    const expiresAt = addSubscriptionDuration(from, plan.duration_kind, durationValue);
+    const subId = generateId();
+    if (price > 0) {
+      const newBal = String(Math.max(0, balance - price));
+      await updateUser(userId, { balance: newBal });
+    }
+    await sql`
+      INSERT INTO "UserPlatformSubscription" (id, user_id, plan_id, price_paid, expires_at)
+      VALUES (${subId}, ${userId}, ${planId}, ${price}, ${expiresAt})
+    `;
+    try {
+      const { createNotification } = await import("./lms-spec-db");
+      await createNotification({
+        userId,
+        type: "subscription_renewal",
+        title: "تم تجديد اشتراك المنصة",
+        body: `ينتهي اشتراكك في ${new Intl.DateTimeFormat("ar-EG", { dateStyle: "medium" }).format(expiresAt)}`,
+        link: "/dashboard",
+      });
+    } catch {
+      /* اختياري */
+    }
+    return { expiresAt };
   }
 
   const balance = Number(user.balance) || 0;
   if (price > 0 && balance < price) throw new Error("رصيدك غير كافٍ لشراء هذه الباقة");
 
   const now = new Date();
-  const expiresAt = addSubscriptionDuration(now, plan.duration_kind);
+  const durationValue = Number((plan as { duration_value?: number }).duration_value) || 1;
+  const expiresAt = addSubscriptionDuration(now, plan.duration_kind, durationValue);
 
   const subId = generateId();
   if (price > 0) {
@@ -3466,6 +3539,12 @@ export async function getCoursesPublished(
   withCategory = true,
 ): Promise<(Course & CoursePublishedExtras)[]> {
   await ensureLessonRatingsSchema();
+  try {
+    const { ensureLmsSpecSchema } = await import("./lms-spec-db");
+    await ensureLmsSpecSchema();
+  } catch {
+    /* عمود is_visible قد لا يكون جاهزاً بعد — نتجاهل الفلترة أدناه بأمان */
+  }
   if (!withCategory) {
     const rows = await sql`
       SELECT c.*, ${courseRatingSelectSql()},
@@ -3473,7 +3552,7 @@ export async function getCoursesPublished(
         u.name as instructor_name
       FROM "Course" c
       LEFT JOIN "User" u ON u.id = c.created_by_id
-      WHERE c.is_published = true
+      WHERE c.is_published = true AND (c.is_visible IS NULL OR c.is_visible = true)
       ORDER BY c."order" ASC, c.created_at DESC
     `;
     return (rows as Record<string, unknown>[]).map((r) => {
@@ -3493,7 +3572,7 @@ export async function getCoursesPublished(
     FROM "Course" c
     LEFT JOIN "Category" cat ON c.category_id = cat.id
     LEFT JOIN "User" u ON u.id = c.created_by_id
-    WHERE c.is_published = true
+    WHERE c.is_published = true AND (c.is_visible IS NULL OR c.is_visible = true)
     ORDER BY c."order" ASC, c.created_at DESC
   `;
   return (rows as Record<string, unknown>[]).map((r) => {
@@ -3758,9 +3837,22 @@ export async function deleteCourse(id: string): Promise<void> {
 }
 
 // ----- Lesson -----
-export async function getLessonsByCourseId(courseId: string): Promise<Lesson[]> {
-  const rows = await sql`SELECT * FROM "Lesson" WHERE course_id = ${courseId} ORDER BY "order" ASC`;
-  return rows as Lesson[];
+export async function getLessonsByCourseId(courseId: string, onlyVisible = false): Promise<Lesson[]> {
+  if (!onlyVisible) {
+    const rows = await sql`SELECT * FROM "Lesson" WHERE course_id = ${courseId} ORDER BY "order" ASC`;
+    return rows as Lesson[];
+  }
+  try {
+    const { ensureLmsSpecSchema } = await import("./lms-spec-db");
+    await ensureLmsSpecSchema();
+    const rows = await sql`
+      SELECT * FROM "Lesson" WHERE course_id = ${courseId} AND (is_visible IS NULL OR is_visible = true) ORDER BY "order" ASC
+    `;
+    return rows as Lesson[];
+  } catch {
+    const rows = await sql`SELECT * FROM "Lesson" WHERE course_id = ${courseId} ORDER BY "order" ASC`;
+    return rows as Lesson[];
+  }
 }
 
 export async function getLessonBySlug(courseId: string, lessonSlug: string): Promise<Lesson | null> {
@@ -4025,7 +4117,20 @@ export async function getCourseWithContent(segment: string): Promise<{
     courseRow = c as unknown as Record<string, unknown>;
   }
   const courseId = courseRow.id as string;
-  const lessonRows = await sql`SELECT * FROM "Lesson" WHERE course_id = ${courseId} ORDER BY "order" ASC`;
+  try {
+    const { ensureLmsSpecSchema } = await import("./lms-spec-db");
+    await ensureLmsSpecSchema();
+  } catch {
+    /* عمود is_visible قد لا يكون جاهزاً بعد */
+  }
+  let lessonRows: Record<string, unknown>[];
+  try {
+    lessonRows = (await sql`
+      SELECT * FROM "Lesson" WHERE course_id = ${courseId} AND (is_visible IS NULL OR is_visible = true) ORDER BY "order" ASC
+    `) as Record<string, unknown>[];
+  } catch {
+    lessonRows = (await sql`SELECT * FROM "Lesson" WHERE course_id = ${courseId} ORDER BY "order" ASC`) as Record<string, unknown>[];
+  }
   const quizRows = await sql`
     SELECT q.*, (SELECT COUNT(*)::int FROM "Question" WHERE quiz_id = q.id) as question_count
     FROM "Quiz" q WHERE q.course_id = ${courseId} ORDER BY q."order" ASC
@@ -4061,8 +4166,8 @@ export async function getCourseForEdit(courseId: string): Promise<{
     const questionRows = await sql`SELECT * FROM "Question" WHERE quiz_id = ${q.id} ORDER BY "order" ASC`;
     const questions: Array<Record<string, unknown> & { options: Record<string, unknown>[] }> = [];
     for (const qu of questionRows as Record<string, unknown>[]) {
-      const optRows = await sql`SELECT * FROM "QuestionOption" WHERE question_id = ${qu.id} ORDER BY id`;
-      questions.push({ ...rowToCamel(qu)!, options: rowsToCamel(optRows as Record<string, unknown>[]) });
+      const optRows = await fetchQuestionOptionsOrdered(String(qu.id));
+      questions.push({ ...rowToCamel(qu)!, options: rowsToCamel(optRows) });
     }
     quizzes.push({ ...rowToCamel(q)!, questions });
   }
@@ -4095,10 +4200,10 @@ export async function getQuizById(quizId: string): Promise<{
   const questions: Array<Record<string, unknown> & { options: Record<string, unknown>[] }> = [];
 
   for (const q of questionRows as Record<string, unknown>[]) {
-    const optRows = await sql`SELECT * FROM "QuestionOption" WHERE question_id = ${q.id} ORDER BY id`;
+    const optRows = await fetchQuestionOptionsOrdered(String(q.id));
     questions.push({
       ...rowToCamel(q)!,
-      options: rowsToCamel(optRows as Record<string, unknown>[]),
+      options: rowsToCamel(optRows),
     } as Record<string, unknown> & { options: Record<string, unknown>[] });
   }
 
@@ -4153,16 +4258,81 @@ export async function createQuestion(data: {
   return q;
 }
 
+async function ensureQuestionOptionOrderColumn(): Promise<void> {
+  try {
+    await sql`ALTER TABLE "QuestionOption" ADD COLUMN IF NOT EXISTS "order" INT NOT NULL DEFAULT 0`;
+  } catch {
+    /* ignore */
+  }
+  try {
+    await sql`
+      WITH needs AS (
+        SELECT question_id
+        FROM "QuestionOption"
+        GROUP BY question_id
+        HAVING COUNT(*) > 1 AND MAX("order") = 0
+      ),
+      ranked AS (
+        SELECT
+          o.id,
+          (ROW_NUMBER() OVER (PARTITION BY o.question_id ORDER BY o.created_at ASC, o.id ASC) - 1)::int AS rn
+        FROM "QuestionOption" o
+        INNER JOIN needs n ON n.question_id = o.question_id
+      )
+      UPDATE "QuestionOption" AS o
+      SET "order" = r.rn
+      FROM ranked AS r
+      WHERE o.id = r.id
+    `;
+  } catch {
+    /* ignore */
+  }
+}
+
+async function fetchQuestionOptionsOrdered(questionId: string): Promise<Record<string, unknown>[]> {
+  await ensureQuestionOptionOrderColumn();
+  try {
+    const optRows = await sql`
+      SELECT * FROM "QuestionOption"
+      WHERE question_id = ${questionId}
+      ORDER BY "order" ASC, created_at ASC, id ASC
+    `;
+    return optRows as Record<string, unknown>[];
+  } catch {
+    const optRows = await sql`
+      SELECT * FROM "QuestionOption"
+      WHERE question_id = ${questionId}
+      ORDER BY created_at ASC, id ASC
+    `;
+    return optRows as Record<string, unknown>[];
+  }
+}
+
 export async function createQuestionOption(data: {
   question_id: string;
   text: string;
   is_correct: boolean;
+  order?: number;
 }): Promise<QuestionOption> {
+  await ensureQuestionOptionOrderColumn();
   const id = generateId();
-  await sql`
-    INSERT INTO "QuestionOption" (id, question_id, text, is_correct)
-    VALUES (${id}, ${data.question_id}, ${data.text}, ${data.is_correct})
-  `;
+  const order = typeof data.order === "number" && Number.isFinite(data.order) ? Math.max(0, Math.round(data.order)) : 0;
+  try {
+    await sql`
+      INSERT INTO "QuestionOption" (id, question_id, text, is_correct, "order")
+      VALUES (${id}, ${data.question_id}, ${data.text}, ${data.is_correct}, ${order})
+    `;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (/order|column/i.test(msg)) {
+      await sql`
+        INSERT INTO "QuestionOption" (id, question_id, text, is_correct)
+        VALUES (${id}, ${data.question_id}, ${data.text}, ${data.is_correct})
+      `;
+    } else {
+      throw err;
+    }
+  }
   const rows = await sql`SELECT * FROM "QuestionOption" WHERE id = ${id} LIMIT 1`;
   const o = rows[0] as QuestionOption;
   if (!o) throw new Error("فشل إنشاء الخيار");
@@ -4190,15 +4360,16 @@ export async function getEnrollment(userId: string, courseId: string): Promise<E
 }
 
 export async function createEnrollment(userId: string, courseId: string): Promise<Enrollment> {
-  const id = generateId();
-  await sql`
-    INSERT INTO "Enrollment" (id, user_id, course_id)
-    VALUES (${id}, ${userId}, ${courseId})
-  `;
-  const rows = await sql`SELECT * FROM "Enrollment" WHERE id = ${id} LIMIT 1`;
-  const e = rows[0] as Enrollment;
-  if (!e) throw new Error("فشل إنشاء التسجيل");
-  return e;
+  // صلاحية الكورس (مدى الحياة / أيام / اشتراك) عبر طبقة المواصفات
+  const { createEnrollmentWithAccess, getCourseAccessFields } = await import("./lms-spec-db");
+  const access = await getCourseAccessFields(courseId);
+  const created = await createEnrollmentWithAccess(
+    userId,
+    courseId,
+    access?.accessType ?? "lifetime",
+    access?.accessDurationDays ?? null,
+  );
+  return created as unknown as Enrollment;
 }
 
 export async function deleteEnrollment(userId: string, courseId: string): Promise<void> {
@@ -4809,6 +4980,115 @@ export async function countQuizAttemptsByUserAndCourse(userId: string, courseId:
   return Number((rows[0] as { c: number })?.c ?? 0);
 }
 
+// ----- تقدم الكورس (LessonProgress + محاولات الاختبارات) -----
+async function ensureLessonProgressSchema(): Promise<void> {
+  return ensureOnce("ensureLessonProgressSchema", async () => {
+    await sql`
+      CREATE TABLE IF NOT EXISTS "LessonProgress" (
+        id           TEXT PRIMARY KEY,
+        user_id      TEXT NOT NULL REFERENCES "User"(id) ON DELETE CASCADE,
+        lesson_id    TEXT NOT NULL REFERENCES "Lesson"(id) ON DELETE CASCADE,
+        course_id    TEXT NOT NULL REFERENCES "Course"(id) ON DELETE CASCADE,
+        completed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(user_id, lesson_id)
+      )
+    `;
+    await sql`CREATE INDEX IF NOT EXISTS "LessonProgress_user_course_idx" ON "LessonProgress"(user_id, course_id)`;
+  });
+}
+
+export async function markLessonCompleted(userId: string, lessonId: string, courseId: string): Promise<void> {
+  await ensureLessonProgressSchema();
+  const id = generateId();
+  await sql`
+    INSERT INTO "LessonProgress" (id, user_id, lesson_id, course_id, completed_at)
+    VALUES (${id}, ${userId}, ${lessonId}, ${courseId}, NOW())
+    ON CONFLICT (user_id, lesson_id) DO NOTHING
+  `;
+}
+
+export async function getCompletedLessonIdsForUserCourse(userId: string, courseId: string): Promise<string[]> {
+  await ensureLessonProgressSchema();
+  try {
+    const rows = await sql`
+      SELECT lesson_id FROM "LessonProgress"
+      WHERE user_id = ${userId} AND course_id = ${courseId}
+    `;
+    return (rows as { lesson_id: string }[]).map((r) => String(r.lesson_id));
+  } catch {
+    return [];
+  }
+}
+
+/** اختبارات نجح فيها المتدرب (أو سلّمها إن لم يُضبط حد نجاح) */
+export async function getPassedQuizIdsForUserCourse(userId: string, courseId: string): Promise<string[]> {
+  try {
+    const rows = await sql`
+      SELECT q.id AS quiz_id, q.passing_score,
+        MAX(
+          CASE
+            WHEN qa.total_questions > 0
+            THEN (qa.score::float / qa.total_questions::float) * 100
+            ELSE NULL
+          END
+        ) AS best_pct
+      FROM "Quiz" q
+      LEFT JOIN "QuizAttempt" qa
+        ON qa.quiz_id = q.id AND qa.user_id = ${userId} AND qa.total_questions > 0
+      WHERE q.course_id = ${courseId}
+      GROUP BY q.id, q.passing_score
+    `;
+    const passed: string[] = [];
+    for (const r of rows as { quiz_id: string; passing_score: number | null; best_pct: number | null }[]) {
+      if (r.best_pct == null) continue;
+      if (r.passing_score != null) {
+        if (Number(r.best_pct) >= Number(r.passing_score)) passed.push(String(r.quiz_id));
+      } else {
+        passed.push(String(r.quiz_id));
+      }
+    }
+    return passed;
+  } catch {
+    return [];
+  }
+}
+
+export type CourseProgressSummary = {
+  totalItems: number;
+  completedItems: number;
+  percent: number;
+  completedLessonIds: string[];
+  passedQuizIds: string[];
+  isComplete: boolean;
+};
+
+export async function getCourseProgressForUser(
+  userId: string,
+  courseId: string,
+  lessons: Array<{ id: string }>,
+  quizzes: Array<{ id: string }>,
+): Promise<CourseProgressSummary> {
+  const [completedLessonIds, passedQuizIds] = await Promise.all([
+    getCompletedLessonIdsForUserCourse(userId, courseId),
+    getPassedQuizIdsForUserCourse(userId, courseId),
+  ]);
+  const lessonSet = new Set(completedLessonIds);
+  const quizSet = new Set(passedQuizIds);
+  const completedLessons = lessons.filter((l) => lessonSet.has(l.id)).length;
+  const completedQuizzes = quizzes.filter((q) => quizSet.has(q.id)).length;
+  const totalItems = lessons.length + quizzes.length;
+  const completedItems = completedLessons + completedQuizzes;
+  const percent = totalItems > 0 ? Math.round((completedItems / totalItems) * 100) : 0;
+  return {
+    totalItems,
+    completedItems,
+    percent,
+    completedLessonIds,
+    passedQuizIds,
+    isComplete: totalItems > 0 && completedItems >= totalItems,
+  };
+}
+
 export async function createQuizAttempt(
   userId: string,
   quizId: string,
@@ -5138,6 +5418,8 @@ export async function getEnrollmentsWithCourseByUserId(userId: string): Promise<
     user_id: r.user_id,
     course_id: r.course_id,
     enrolled_at: r.enrolled_at,
+    activatedAt: (r.activated_at as Date | string | null | undefined) ?? null,
+    expiresAt: (r.expires_at as Date | string | null | undefined) ?? null,
     course: {
       id: r.c_id,
       title: r.c_title,
@@ -5615,7 +5897,7 @@ export async function reorderJobs(id: string, direction: "up" | "down"): Promise
 // ─── Platform search ────────────────────────────────────────────────────────
 
 export type PlatformSearchResult = {
-  type: "section" | "course" | "lecture" | "library";
+  type: "section" | "course" | "lecture" | "library" | "teacher";
   id: string;
   title: string;
   slug?: string;
@@ -5725,6 +6007,57 @@ export async function searchPlatform(q: string): Promise<PlatformSearchResult[]>
         id,
         title: String(r.title ?? ""),
         href: `/library/${encodeURIComponent(id)}`,
+      });
+    }
+  } catch {
+    /* جدول غير جاهز */
+  }
+
+  try {
+    const teacherRows = await sql`
+      SELECT id, name, teacher_subject FROM "User"
+      WHERE role = 'TEACHER' AND name ILIKE ${likePattern}
+      ORDER BY name ASC
+      LIMIT ${limit}
+    `;
+    for (const r of teacherRows as Record<string, unknown>[]) {
+      const id = String(r.id);
+      results.push({
+        type: "teacher",
+        id,
+        title: String(r.name ?? ""),
+        href: `/courses?teacher=${encodeURIComponent(id)}`,
+      });
+    }
+  } catch {
+    /* جدول غير جاهز */
+  }
+
+  try {
+    await ensureLessonAttachmentsSchema();
+    const attachmentRows = await sql`
+      SELECT la.id, la.title, la.file_name, l.slug AS lesson_slug, c.slug AS course_slug
+      FROM "LessonAttachment" la
+      JOIN "Lesson" l ON l.id = la.lesson_id
+      JOIN "Course" c ON c.id = l.course_id
+      WHERE c.is_published = true
+        AND (la.title ILIKE ${likePattern} OR la.file_name ILIKE ${likePattern})
+      ORDER BY la."order" ASC
+      LIMIT ${limit}
+    `;
+    for (const r of attachmentRows as Record<string, unknown>[]) {
+      const courseSlug = String(r.course_slug ?? "");
+      const lessonSlug = String(r.lesson_slug ?? "");
+      results.push({
+        type: "lecture",
+        id: String(r.id),
+        title: String(r.title || r.file_name || ""),
+        href:
+          courseSlug && lessonSlug
+            ? `/courses/${encodeURIComponent(courseSlug)}/lessons/${encodeURIComponent(lessonSlug)}`
+            : courseSlug
+              ? `/courses/${encodeURIComponent(courseSlug)}`
+              : "/courses",
       });
     }
   } catch {

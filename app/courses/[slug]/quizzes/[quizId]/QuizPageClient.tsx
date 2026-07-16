@@ -27,7 +27,7 @@ export type QuizApiPayload = {
   maxQuizAttempts?: number | null;
 };
 
-export function QuizPageClient({ quizId }: { quizId: string }) {
+export function QuizPageClient({ quizId, courseSlug }: { quizId: string; courseSlug?: string }) {
   const t = useT();
   const [quiz, setQuiz] = useState<QuizApiPayload | null>(null);
   const [loading, setLoading] = useState(true);
@@ -130,7 +130,7 @@ export function QuizPageClient({ quizId }: { quizId: string }) {
           <span className="mr-2"> — {t("quiz.durationLabel", "Quiz duration:")} {quiz.timeLimitMinutes} {t("quiz.minutes", "minutes")}</span>
         )}
       </p>
-      <QuizTake quiz={quiz} />
+      <QuizTake quiz={quiz} courseSlug={courseSlug} />
     </div>
   );
 }

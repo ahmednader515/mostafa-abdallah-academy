@@ -2,7 +2,7 @@ import { getServerSession } from "next-auth";
 import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
 import { authOptions } from "@/lib/auth";
-import { getLiveStreamById, getCoursesAll, getCoursesWithCountsForCreator, getCourseById } from "@/lib/db";
+import { getLiveStreamById, getCoursesAll, getCoursesWithCountsForCreator, getCourseById, getCategories } from "@/lib/db";
 import { canManageCourse } from "@/lib/permissions";
 import { LiveStreamForm } from "../../LiveStreamForm";
 
@@ -55,23 +55,42 @@ export default async function EditLiveStreamPage({ params }: Props) {
         )
       : await getCoursesAll();
 
+  const providerValue = String(s.provider ?? "zoom");
   const initialData = {
     id: String(s.id),
     courseId: streamCourseId,
     title: String(s.title ?? ""),
     titleAr: String(s.title_ar ?? s.titleAr ?? ""),
-    provider: (s.provider === "google_meet" ? "google_meet" : "zoom") as "zoom" | "google_meet",
+    provider: (["zoom", "google_meet", "youtube_live", "external"].includes(providerValue)
+      ? providerValue
+      : "zoom") as "zoom" | "google_meet" | "youtube_live" | "external",
     meetingUrl: String(s.meeting_url ?? ""),
     meetingId: String(s.meeting_id ?? s.meetingId ?? ""),
     meetingPassword: String(s.meeting_password ?? s.meetingPassword ?? ""),
     scheduledAt: toDateTimeLocal((s.scheduled_at ?? s.scheduledAt) as Date | string),
     description: String(s.description ?? ""),
     order: Number(s.order ?? 0),
+    categoryId: String(s.categoryId ?? s.category_id ?? ""),
+    durationMinutes: s.durationMinutes != null || s.duration_minutes != null ? String(s.durationMinutes ?? s.duration_minutes) : "",
+    showOnHomepage: Boolean(s.showOnHomepage ?? s.show_on_homepage ?? false),
+    accessMode: (String(s.accessMode ?? s.access_mode ?? "course_enrolled") as
+      | "public"
+      | "members"
+      | "paid"
+      | "subscribers"
+      | "course_enrolled"),
+    recordingUrl: String(s.recordingUrl ?? s.recording_url ?? ""),
   };
 
   const courseOptions = courses.map((c) => ({
     id: c.id,
     title: (c as { title_ar?: string; title: string }).title_ar ?? c.title,
+  }));
+
+  const categories = await getCategories().catch(() => []);
+  const categoryOptions = categories.map((c) => ({
+    id: c.id,
+    title: (c as { nameAr?: string | null; name_ar?: string | null; name: string }).nameAr ?? (c as { name_ar?: string | null }).name_ar ?? c.name,
   }));
 
   return (
@@ -85,7 +104,7 @@ export default async function EditLiveStreamPage({ params }: Props) {
       <h2 className="mt-4 text-xl font-bold text-[var(--color-foreground)]">
         تعديل البث المباشر
       </h2>
-      <LiveStreamForm courseOptions={courseOptions} initialData={initialData} />
+      <LiveStreamForm courseOptions={courseOptions} categoryOptions={categoryOptions} initialData={initialData} />
     </div>
   );
 }

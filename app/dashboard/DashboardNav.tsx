@@ -138,6 +138,36 @@ export function DashboardNav({
           {t("dashboardNav.paymentMethods", "Student payment methods")}
         </NavLink>
       )}
+      {(isAdmin || isAssistant) && (
+        <NavLink href="/dashboard/settings/labels">
+          {t("dashboardNav.labels", "Labels")}
+        </NavLink>
+      )}
+      {(isAdmin || isAssistant) && (
+        <NavLink href="/dashboard/categories">
+          {t("dashboardNav.categories", "Categories")}
+        </NavLink>
+      )}
+      {(isAdmin || isAssistant) && (
+        <NavLink href="/dashboard/settings/homepage-sections">
+          {t("dashboardNav.homepageSections", "Homepage sections")}
+        </NavLink>
+      )}
+      {(isAdmin || isAssistant) && (
+        <NavLink href="/dashboard/settings/social-links">
+          {t("dashboardNav.socialLinks", "Social links")}
+        </NavLink>
+      )}
+      {(isAdmin || isAssistant) && (
+        <NavLink href="/dashboard/settings/branding">
+          {t("dashboardNav.branding", "Branding & analytics")}
+        </NavLink>
+      )}
+      {(isAdmin || isAssistant) && (
+        <NavLink href="/dashboard/settings/certificates">
+          {t("dashboardNav.certificatesDesign", "Certificates & design")}
+        </NavLink>
+      )}
     </>
   );
 }

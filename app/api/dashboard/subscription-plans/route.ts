@@ -39,8 +39,9 @@ export async function POST(request: NextRequest) {
   const name = body.name?.trim();
   if (!name) return NextResponse.json({ error: "اسم الاشتراك مطلوب" }, { status: 400 });
   const dk = body.durationKind as SubscriptionDurationKind | undefined;
-  if (dk !== "week" && dk !== "month" && dk !== "year") {
-    return NextResponse.json({ error: "اختر مدة: week أو month أو year" }, { status: 400 });
+  const allowed: SubscriptionDurationKind[] = ["week", "month", "year", "months_3", "months_6", "months_9"];
+  if (!dk || !allowed.includes(dk)) {
+    return NextResponse.json({ error: "اختر مدة صالحة (أسبوعي / شهري / 3 أو 6 أو 9 أشهر / سنوي)" }, { status: 400 });
   }
   const price = typeof body.price === "number" && Number.isFinite(body.price) ? Math.max(0, body.price) : 0;
   try {

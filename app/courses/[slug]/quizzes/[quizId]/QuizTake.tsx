@@ -1,11 +1,14 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import type { QuizApiPayload } from "./QuizPageClient";
 import { useT } from "@/components/LocaleProvider";
 
-export function QuizTake({ quiz }: { quiz: QuizApiPayload }) {
+export function QuizTake({ quiz, courseSlug }: { quiz: QuizApiPayload; courseSlug?: string }) {
   const t = useT();
+  const router = useRouter();
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [started, setStarted] = useState(false);
   const [attemptId, setAttemptId] = useState<string | null>(null);
@@ -13,6 +16,8 @@ export function QuizTake({ quiz }: { quiz: QuizApiPayload }) {
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [certificateId, setCertificateId] = useState<string | null>(null);
+  const [certificateRecordId, setCertificateRecordId] = useState<string | null>(null);
   const timeLimitMinutes = quiz.timeLimitMinutes ?? null;
   const totalSeconds =
     timeLimitMinutes != null && Number(timeLimitMinutes) > 0
@@ -66,7 +71,7 @@ export function QuizTake({ quiz }: { quiz: QuizApiPayload }) {
 
   const submitAnswers = useCallback(
     async (reason?: "timeup") => {
-      const s = reason === "timeup" ? calculateScoreFromAnswers(answersRef.current) : calculateScore();
+      const s = calculateScoreFromAnswers(answersRef.current);
       setSubmitting(true);
       try {
         const res = await fetch(`/api/quizzes/${encodeURIComponent(quiz.id)}`, {
@@ -81,7 +86,24 @@ export function QuizTake({ quiz }: { quiz: QuizApiPayload }) {
           setSubmitting(false);
           return;
         }
+        const data = await res.json().catch(() => ({}));
+        if (typeof data.certificateRecordId === "string" && data.certificateRecordId) {
+          setCertificateRecordId(data.certificateRecordId);
+        }
+        if (typeof data.certificateId === "string" && data.certificateId) {
+          setCertificateId(data.certificateId);
+        }
         setSubmitted(true);
+        if (data.courseCompleted) {
+          const slug =
+            courseSlug ||
+            (quiz.course.slug && quiz.course.slug.trim()
+              ? encodeURIComponent(quiz.course.slug.trim())
+              : quiz.course.id);
+          router.push(`/courses/${slug}/complete`);
+          return;
+        }
+        router.refresh();
         if (reason === "timeup") {
           setToastMessage(t("quiz.examTimeEnded", "Time is up"));
         }
@@ -92,7 +114,7 @@ export function QuizTake({ quiz }: { quiz: QuizApiPayload }) {
         setSubmitting(false);
       }
     },
-    [attemptId, quiz.id, t, totalScored]
+    [attemptId, quiz.id, quiz.course.id, quiz.course.slug, courseSlug, router, t, totalScored]
   );
 
   async function handleStart() {
@@ -285,6 +307,19 @@ export function QuizTake({ quiz }: { quiz: QuizApiPayload }) {
           <p className="mt-2 text-sm text-[var(--color-muted)]">
             {t("quiz.essayNotAutoCorrected", "Essay questions are not auto-graded; the teacher can review them later.")}
           </p>
+          {(certificateRecordId || certificateId) && (
+            <div className="mt-4 rounded-[var(--radius-btn)] border border-[#F59E0B]/50 bg-[#F59E0B]/10 p-4">
+              <p className="text-sm font-medium text-[var(--color-foreground)]">
+                {t("quiz.certificateEarned", "Congratulations! You've earned a certificate for this course.")}
+              </p>
+              <Link
+                href={`/certificates/${encodeURIComponent(certificateRecordId || certificateId || "")}`}
+                className="mt-3 inline-flex rounded-[var(--radius-btn)] bg-[#F59E0B] px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
+              >
+                {t("quiz.viewCertificate", "View certificate")}
+              </Link>
+            </div>
+          )}
         </div>
       )}
     </div>

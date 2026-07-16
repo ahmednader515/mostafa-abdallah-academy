@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 
 type Props = { searchParams: Promise<{ q?: string }> };
 
-const TYPE_ORDER: PlatformSearchResult["type"][] = ["section", "course", "lecture", "library"];
+const TYPE_ORDER: PlatformSearchResult["type"][] = ["section", "course", "teacher", "lecture", "library"];
 
 function groupResults(results: PlatformSearchResult[]) {
   const map = new Map<PlatformSearchResult["type"], PlatformSearchResult[]>();
@@ -27,6 +27,7 @@ export default async function SearchPage({ searchParams }: Props) {
   const typeLabels: Record<PlatformSearchResult["type"], string> = {
     section: t("search.typeSection", "الأقسام"),
     course: t("search.typeCourse", "الكورسات"),
+    teacher: t("search.typeTeacher", "المدرسون"),
     lecture: t("search.typeLecture", "المحاضرات"),
     library: t("search.typeLibrary", "المكتبة"),
   };

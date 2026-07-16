@@ -8,10 +8,9 @@ import {
 } from "@/lib/homepage-hero-stats";
 
 function StatIcon({ kind }: { kind: HomepageStatKind }) {
-  const stroke = kind === "satisfaction" ? "#F59E0B" : "#2563EB";
   const common = {
     fill: "none" as const,
-    stroke,
+    stroke: "currentColor",
     strokeWidth: 1.7,
     strokeLinecap: "round" as const,
     strokeLinejoin: "round" as const,
@@ -61,17 +60,23 @@ export function HomeStatsRibbon({ items }: { items?: HomepageStatItem[] | null }
       className="bg-[var(--color-sections)] px-3 pb-8 sm:px-5 lg:px-8"
       aria-label={t("home.statsAria", "Platform stats")}
     >
-      <div className="mx-auto grid max-w-6xl grid-cols-2 gap-4 rounded-2xl border border-slate-100 bg-white px-4 py-5 shadow-sm sm:grid-cols-4 sm:gap-0 sm:px-2 sm:py-6">
+      <div className="mx-auto grid max-w-6xl grid-cols-2 gap-4 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-5 shadow-[var(--shadow-card)] sm:grid-cols-4 sm:gap-0 sm:px-2 sm:py-6">
         {stats.map((s, i) => (
           <div
             key={s.kind}
             className={`flex flex-col items-center justify-center gap-2 px-3 text-center sm:px-4 ${
-              i < stats.length - 1 ? "sm:border-e sm:border-slate-100" : ""
+              i < stats.length - 1 ? "sm:border-e sm:border-[var(--color-border)]" : ""
             }`}
           >
-            <StatIcon kind={s.kind} />
-            <p className="text-lg font-extrabold text-[#0F172A] sm:text-xl">{s.value}</p>
-            <p className="text-xs font-medium text-slate-500 sm:text-sm">
+            <span
+              className={
+                s.kind === "satisfaction" ? "text-[var(--color-accent)]" : "text-[var(--color-primary)]"
+              }
+            >
+              <StatIcon kind={s.kind} />
+            </span>
+            <p className="text-lg font-extrabold text-[var(--color-foreground)] sm:text-xl">{s.value}</p>
+            <p className="text-xs font-medium text-[var(--color-muted)] sm:text-sm">
               {locale === "en" ? s.labelEn || s.labelAr : s.labelAr || s.labelEn}
             </p>
           </div>

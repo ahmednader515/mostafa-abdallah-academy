@@ -109,16 +109,26 @@ export function LibraryBrowseClient({
   purchasedProductIds: string[];
 }) {
   const t = useT();
+  const INITIAL_VISIBLE = 8;
   const [query, setQuery] = useState("");
+  const [typeFilter, setTypeFilter] = useState<"all" | "article" | "file">("all");
   const [ownedIds, setOwnedIds] = useState<string[]>(purchasedProductIds);
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [visibleByCat, setVisibleByCat] = useState<Record<string, number>>({});
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return products;
-    return products.filter((p) => p.title.toLowerCase().includes(q));
-  }, [products, query]);
+    return products.filter((p) => {
+      if (typeFilter === "article" && p.contentType !== "article") return false;
+      if (typeFilter === "file" && p.contentType === "article") return false;
+      if (!q) return true;
+      return (
+        p.title.toLowerCase().includes(q) ||
+        (p.description?.toLowerCase().includes(q) ?? false)
+      );
+    });
+  }, [products, query, typeFilter]);
 
   const parentCategories = useMemo(
     () => categories.filter((c) => !c.parentId).sort((a, b) => a.order - b.order),
@@ -174,11 +184,13 @@ export function LibraryBrowseClient({
   function renderRow(catId: string, label: string) {
     const items = productsByCategory.get(catId);
     if (!items?.length) return null;
+    const visible = items.slice(0, visibleByCat[catId] ?? INITIAL_VISIBLE);
+    const canShowMore = visible.length < items.length;
     return (
       <div key={catId} className="mt-6">
         <h3 className="mb-3 text-lg font-semibold text-[var(--color-foreground)]">{label}</h3>
         <HorizontalScrollRow>
-          {items.map((p) => (
+          {visible.map((p) => (
             <ProductCard
               key={p.id}
               product={p}
@@ -190,6 +202,20 @@ export function LibraryBrowseClient({
             />
           ))}
         </HorizontalScrollRow>
+        {canShowMore ? (
+          <button
+            type="button"
+            onClick={() =>
+              setVisibleByCat((prev) => ({
+                ...prev,
+                [catId]: (prev[catId] ?? INITIAL_VISIBLE) + INITIAL_VISIBLE,
+              }))
+            }
+            className="mt-3 text-sm font-semibold text-[var(--color-primary)] hover:underline"
+          >
+            {t("library.showMore", "Show more")}
+          </button>
+        ) : null}
       </div>
     );
   }
@@ -210,13 +236,35 @@ export function LibraryBrowseClient({
         <p className="mt-2 text-[var(--color-muted)]">
           {t("library.pageIntro", "Search for files, books, or articles and choose what suits you.")}
         </p>
-        <div className="mt-5">
+        <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center">
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder={t("library.searchPlaceholder", "Search by title…")}
-            className="w-full rounded-[var(--radius-btn)] border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3"
+            className="w-full flex-1 rounded-[var(--radius-btn)] border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3"
           />
+          <div className="flex flex-wrap gap-2">
+            {(
+              [
+                ["all", t("library.filterAll", "All")],
+                ["article", t("library.filterArticles", "Articles")],
+                ["file", t("library.filterFiles", "Files & books")],
+              ] as const
+            ).map(([key, label]) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setTypeFilter(key)}
+                className={`rounded-[var(--radius-btn)] px-3 py-2 text-sm font-medium ${
+                  typeFilter === key
+                    ? "bg-[var(--color-primary)] text-white"
+                    : "border border-[var(--color-border)] text-[var(--color-foreground)]"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
         {error ? <p className="mt-3 text-sm text-red-500">{error}</p> : null}
 

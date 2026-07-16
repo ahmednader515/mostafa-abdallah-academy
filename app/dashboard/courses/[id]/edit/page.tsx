@@ -3,6 +3,7 @@ import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
 import { authOptions } from "@/lib/auth";
 import { getCourseForEdit } from "@/lib/db";
+import { getCourseAccessFields } from "@/lib/lms-spec-db";
 import { canManageCourse } from "@/lib/permissions";
 import { EditCourseForm, type ContentOrderEntry } from "./EditCourseForm";
 
@@ -56,6 +57,12 @@ export default async function EditCoursePage({ params }: Props) {
   if (!canManageCourse(role, session.user.id, createdBy)) {
     redirect("/dashboard");
   }
+  let accessFields: Awaited<ReturnType<typeof getCourseAccessFields>> = null;
+  try {
+    accessFields = await getCourseAccessFields(id);
+  } catch {
+    accessFields = null;
+  }
   const initialData = {
     id: String(c.id ?? ""),
     titleEn: String(c.title ?? ""),
@@ -71,6 +78,10 @@ export default async function EditCoursePage({ params }: Props) {
     isPublished: Boolean(c.isPublished ?? c.is_published ?? true),
     maxQuizAttempts: typeof c.maxQuizAttempts === "number" ? c.maxQuizAttempts : typeof c.max_quiz_attempts === "number" ? c.max_quiz_attempts : null,
     categoryId: (c.categoryId ?? c.category_id ?? "") as string,
+    accessType: (accessFields?.accessType ?? "lifetime") as "lifetime" | "duration_days" | "subscription_only",
+    accessDurationDays: accessFields?.accessDurationDays ?? null,
+    deliveryMode: (accessFields?.deliveryMode ?? "recorded") as "recorded" | "live" | "hybrid",
+    isVisible: accessFields?.isVisible ?? true,
     lessons: data.lessons.map((l) => {
       const row = l as Record<string, unknown>;
       const rawAttachments = Array.isArray(row.attachments)
@@ -107,9 +118,17 @@ export default async function EditCoursePage({ params }: Props) {
             ? Math.floor(Number(rawLimit))
             : null;
       const questions = (row.questions ?? []) as Array<Record<string, unknown>>;
+      const rawPassingScore = row.passingScore ?? row.passing_score;
+      const passingScore =
+        typeof rawPassingScore === "number" && Number.isFinite(rawPassingScore)
+          ? rawPassingScore
+          : typeof rawPassingScore === "string" && rawPassingScore.trim() !== ""
+            ? Math.floor(Number(rawPassingScore))
+            : null;
       return {
         title: String(row.title ?? ""),
         timeLimitMinutes: timeLimitMinutes != null && Number.isFinite(timeLimitMinutes) && timeLimitMinutes >= 1 ? timeLimitMinutes : null,
+        passingScore,
         questions: questions.map((qt) => ({
           type: (qt.type === "ESSAY" || qt.type === "TRUE_FALSE" ? qt.type : "MULTIPLE_CHOICE") as "MULTIPLE_CHOICE" | "ESSAY" | "TRUE_FALSE",
           questionText: String(qt.questionText ?? qt.question_text ?? ""),

@@ -12,6 +12,7 @@ type StreamRow = {
   titleAr: string;
   provider: string;
   meetingUrl: string;
+  recordingUrl?: string;
   scheduledAt: unknown;
   course?: { id: string; title: string; slug: string };
 };
@@ -24,6 +25,7 @@ export function LiveStreamsList({ streams }: { streams: StreamRow[] }) {
   const dateLocale = dateLocaleForUi(locale);
   const dash = t("dashboard.studentsPage.dash");
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [convertingId, setConvertingId] = useState<string | null>(null);
 
   const formatDate = (d: unknown) => {
     if (!d) return dash;
@@ -44,6 +46,23 @@ export function LiveStreamsList({ streams }: { streams: StreamRow[] }) {
       else alert(t(`${L}.deleteFailed`));
     } finally {
       setDeletingId(null);
+    }
+  };
+
+  const handleConvertToLesson = async (id: string) => {
+    if (!confirm(t("dashboard.liveStreamForm.convertToLesson") + "؟")) return;
+    setConvertingId(id);
+    try {
+      const res = await fetch(`/api/live-streams/${id}/convert-to-lesson`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        alert(t("dashboard.liveStreamForm.convertSuccess"));
+        router.refresh();
+      } else {
+        alert(data.error || t("dashboard.liveStreamForm.convertFailed"));
+      }
+    } finally {
+      setConvertingId(null);
     }
   };
 
@@ -89,6 +108,18 @@ export function LiveStreamsList({ streams }: { streams: StreamRow[] }) {
                 >
                   {deletingId === s.id ? t(`${L}.deleting`) : t(`${L}.delete`)}
                 </button>
+                {s.course && (s.recordingUrl?.trim() || s.meetingUrl?.trim()) && (
+                  <button
+                    type="button"
+                    onClick={() => handleConvertToLesson(s.id)}
+                    disabled={convertingId === s.id}
+                    className="ml-2 text-[var(--color-primary)] hover:underline disabled:opacity-50"
+                  >
+                    {convertingId === s.id
+                      ? t("dashboard.liveStreamForm.convertingToLesson")
+                      : t("dashboard.liveStreamForm.convertToLesson")}
+                  </button>
+                )}
               </td>
             </tr>
           ))}

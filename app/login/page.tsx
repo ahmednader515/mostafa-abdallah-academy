@@ -5,7 +5,7 @@ import { signIn } from "next-auth/react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { CONCURRENT_SESSION_ERROR } from "@/lib/auth-constants";
-import LoginBackground from "./LoginBackground";
+import { AuthInput, AuthPasswordInput, AuthShell } from "@/components/AuthShell";
 import { useT } from "@/components/LocaleProvider";
 
 function LoginForm() {
@@ -20,6 +20,7 @@ function LoginForm() {
   const searchParams = useSearchParams();
   const callbackUrl = searchParams.get("callbackUrl") ?? "/dashboard";
   const reasonElsewhere = searchParams.get("reason") === "session_ended_elsewhere";
+  const successMessage = searchParams.get("message");
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -78,129 +79,126 @@ function LoginForm() {
 
   if (concurrentSession) {
     return (
-      <div className="relative mx-auto flex min-h-[calc(100vh-8rem)] w-full max-w-none flex-col overflow-hidden bg-black">
-        <LoginBackground />
-        <div className="pointer-events-none absolute inset-0 z-[1] bg-black/55" />
-        <div className="relative z-10 flex flex-1 items-center justify-center px-4 py-12">
-          <div className="w-full max-w-md rounded-[var(--radius-card)] border border-amber-200 bg-amber-50/50 p-6 dark:border-amber-800 dark:bg-amber-900/20 sm:p-8">
-          <h1 className="text-xl font-bold text-amber-800 dark:text-amber-200">
-            {t("auth.login.concurrentTitle", "This account is active on another device")}
-          </h1>
-          <p className="mt-2 text-sm text-amber-700 dark:text-amber-300">
-            {t("auth.login.concurrentDescription", "This account is currently logged in from another device or browser. To continue here, log out the other device first.")}
-          </p>
-          <p className="mt-3 text-sm text-amber-700 dark:text-amber-300">
-            {t("auth.login.concurrentSecurityHint", "If you suspect your account was compromised, update your password and account details from \"Edit account\" after logging in.")}
-          </p>
-          {error && (
-            <div className="mt-4 rounded-[var(--radius-btn)] bg-red-500/10 px-3 py-2 text-sm text-red-600 dark:text-red-400">
-              {error}
-            </div>
+      <AuthShell
+        variant="login"
+        title={t("auth.login.concurrentTitle", "This account is active on another device")}
+        subtitle={t(
+          "auth.login.concurrentDescription",
+          "This account is currently logged in from another device or browser. To continue here, log out the other device first.",
+        )}
+      >
+        <p className="text-sm leading-relaxed text-slate-600">
+          {t(
+            "auth.login.concurrentSecurityHint",
+            'If you suspect your account was compromised, update your password and account details from "Edit account" after logging in.',
           )}
-          <form onSubmit={handleForceLogoutOther} className="mt-6">
-            <button
-              type="submit"
-              disabled={forceLogoutLoading}
-              className="w-full rounded-[var(--radius-btn)] bg-[var(--color-primary)] py-2.5 font-medium text-white hover:bg-[var(--color-primary-hover)] disabled:opacity-50"
-            >
-              {forceLogoutLoading
-                ? t("auth.login.concurrentActionLoading", "Processing...")
-                : t("auth.login.concurrentAction", "Log out the other device and continue here")}
-            </button>
-          </form>
+        </p>
+        {error ? (
+          <div className="mt-4 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-600">{error}</div>
+        ) : null}
+        <form onSubmit={handleForceLogoutOther} className="mt-6">
           <button
-            type="button"
-            onClick={() => setConcurrentSession(false)}
-            className="mt-4 w-full text-sm text-[var(--color-muted)] hover:underline"
+            type="submit"
+            disabled={forceLogoutLoading}
+            className="w-full rounded-xl bg-[#2563EB] py-2.5 text-sm font-semibold text-white transition hover:bg-[#1d4ed8] disabled:opacity-50"
           >
-            {t("auth.login.concurrentCancel", "Cancel and go back to login")}
+            {forceLogoutLoading
+              ? t("auth.login.concurrentActionLoading", "Processing...")
+              : t("auth.login.concurrentAction", "Log out the other device and continue here")}
           </button>
-          </div>
-        </div>
-      </div>
+        </form>
+        <button
+          type="button"
+          onClick={() => setConcurrentSession(false)}
+          className="mt-4 w-full text-sm text-slate-500 transition hover:text-slate-800 hover:underline"
+        >
+          {t("auth.login.concurrentCancel", "Cancel and go back to login")}
+        </button>
+      </AuthShell>
     );
   }
 
   return (
-    <div className="relative mx-auto flex min-h-[calc(100vh-8rem)] w-full max-w-none flex-col overflow-hidden bg-black">
-      <LoginBackground />
-      <div className="pointer-events-none absolute inset-0 z-[1] bg-black/55" />
-      <div className="relative z-10 flex flex-1 items-center justify-center px-4 py-12">
-        <div className="w-full max-w-md rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] p-6 shadow-[var(--shadow-card)] sm:p-8">
-        <h1 className="text-2xl font-bold text-[var(--color-foreground)]">
-          {t("auth.login.title", "Log in")}
-        </h1>
-        <p className="mt-1 text-sm text-[var(--color-muted)]">
-          {t("auth.login.subtitle", "Enter your details to access your account")}
-        </p>
-        {reasonElsewhere && (
-          <div className="mt-4 rounded-[var(--radius-btn)] border border-amber-200 bg-amber-50/50 px-3 py-2 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-200">
-            {t("auth.login.sessionEndedElsewhere", "You were logged out because this account was opened on another device. Log in again here if you want.")}
-          </div>
-        )}
-        <form onSubmit={handleSubmit} className="mt-6 space-y-4">
-          {error && (
-            <div className="rounded-[var(--radius-btn)] bg-red-500/10 px-3 py-2 text-sm text-red-600 dark:text-red-400">
-              {error}
-            </div>
-          )}
-          <div>
-            <label
-              htmlFor="email"
-              className="block text-sm font-medium text-[var(--color-foreground)]"
-            >
-              {t("auth.login.emailOrPhoneLabel", "Email or phone number")}
-            </label>
-            <input
-              id="email"
-              type="text"
-              autoComplete="username"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              className="mt-1 w-full rounded-[var(--radius-btn)] border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2 text-[var(--color-foreground)] focus:border-[var(--color-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--color-primary)]"
-              placeholder={t("auth.login.emailOrPhonePlaceholder", "example@email.com or 01xxxxxxxxx")}
-            />
-          </div>
-          <div>
-            <label
-              htmlFor="password"
-              className="block text-sm font-medium text-[var(--color-foreground)]"
-            >
-              {t("auth.login.passwordLabel", "Password")}
-            </label>
-            <input
-              id="password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              className="mt-1 w-full rounded-[var(--radius-btn)] border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2 text-[var(--color-foreground)] focus:border-[var(--color-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--color-primary)]"
-            />
-            <p className="mt-1.5 text-xs text-[var(--color-muted)]">
-              <Link href="/login/forgot-password" className="text-[var(--color-primary)] hover:underline">
-                {t("auth.login.forgotPassword", "Forgot password?")}
-              </Link>
-            </p>
-          </div>
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full rounded-[var(--radius-btn)] bg-[var(--color-primary)] py-2.5 font-medium text-white transition hover:bg-[var(--color-primary-hover)] disabled:opacity-50"
-          >
-            {loading ? t("auth.login.submitting", "Logging in...") : t("auth.login.submit", "Log in")}
-          </button>
-        </form>
-        <p className="mt-6 text-center text-sm text-[var(--color-muted)]">
+    <AuthShell
+      variant="login"
+      title={t("auth.login.title", "Log in")}
+      subtitle={t("auth.login.subtitle", "Enter your details to access your account")}
+      footer={
+        <>
           {t("auth.login.noAccount", "Don't have an account?")}{" "}
-          <Link
-            href="/register"
-            className="font-medium text-[var(--color-primary)] hover:underline"
-          >
+          <Link href="/register" className="font-semibold text-[#2563EB] transition hover:text-[#1d4ed8]">
             {t("auth.login.createAccount", "Create account")}
           </Link>
-        </p>
+        </>
+      }
+    >
+      {reasonElsewhere ? (
+        <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          {t(
+            "auth.login.sessionEndedElsewhere",
+            "You were logged out because this account was opened on another device. Log in again here if you want.",
+          )}
         </div>
+      ) : null}
+      {successMessage ? (
+        <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+          {successMessage}
+        </div>
+      ) : null}
+
+      <form onSubmit={handleSubmit} className="space-y-4">
+        {error ? (
+          <div className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-600">{error}</div>
+        ) : null}
+        <div>
+          <label htmlFor="email" className="block text-sm font-medium text-slate-800">
+            {t("auth.login.emailOrPhoneLabel", "Email or phone number")}
+          </label>
+          <AuthInput
+            id="email"
+            type="text"
+            autoComplete="username"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+            placeholder={t("auth.login.emailOrPhonePlaceholder", "example@email.com or 01xxxxxxxxx")}
+          />
+        </div>
+        <div>
+          <AuthPasswordInput
+            id="password"
+            label={t("auth.login.passwordLabel", "Password")}
+            value={password}
+            onChange={setPassword}
+            required
+          />
+          <p className="mt-2 text-start text-xs">
+            <Link href="/login/forgot-password" className="font-medium text-[#2563EB] hover:underline">
+              {t("auth.login.forgotPassword", "Forgot password?")}
+            </Link>
+          </p>
+        </div>
+        <button
+          type="submit"
+          disabled={loading}
+          className="w-full rounded-xl bg-[#2563EB] py-2.5 text-sm font-semibold text-white shadow-[0_10px_24px_-12px_rgba(37,99,235,0.9)] transition hover:bg-[#1d4ed8] disabled:opacity-50"
+        >
+          {loading ? t("auth.login.submitting", "Logging in...") : t("auth.login.submit", "Log in")}
+        </button>
+      </form>
+    </AuthShell>
+  );
+}
+
+function AuthFallback() {
+  return (
+    <div className="auth-page relative flex min-h-screen items-center justify-center px-4">
+      <div className="auth-page-bg absolute inset-0" aria-hidden />
+      <div className="relative z-10 w-full max-w-md rounded-[1.75rem] border border-white/60 bg-white p-8 shadow-xl">
+        <div className="h-8 w-48 animate-pulse rounded-lg bg-slate-100" />
+        <div className="mt-4 h-4 w-full animate-pulse rounded bg-slate-100" />
+        <div className="mt-6 h-11 w-full animate-pulse rounded-xl bg-slate-100" />
+        <div className="mt-3 h-11 w-full animate-pulse rounded-xl bg-slate-100" />
       </div>
     </div>
   );
@@ -208,19 +206,7 @@ function LoginForm() {
 
 export default function LoginPage() {
   return (
-    <Suspense fallback={
-      <div className="relative mx-auto flex min-h-[calc(100vh-8rem)] w-full max-w-none flex-col overflow-hidden bg-black">
-        <LoginBackground />
-        <div className="pointer-events-none absolute inset-0 z-[1] bg-black/55" />
-        <div className="relative z-10 flex flex-1 items-center justify-center px-4 py-12">
-          <div className="w-full max-w-md rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] p-8">
-            <div className="h-8 w-48 animate-pulse rounded bg-[var(--color-border)]" />
-            <div className="mt-4 h-4 w-full animate-pulse rounded bg-[var(--color-border)]" />
-            <div className="mt-4 h-4 w-full animate-pulse rounded bg-[var(--color-border)]" />
-          </div>
-        </div>
-      </div>
-    }>
+    <Suspense fallback={<AuthFallback />}>
       <LoginForm />
     </Suspense>
   );

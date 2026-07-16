@@ -40,7 +40,8 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   if (body.imageUrl !== undefined) patch.image_url = body.imageUrl?.trim() || null;
   if (body.durationKind !== undefined) {
     const dk = body.durationKind as SubscriptionDurationKind;
-    if (dk !== "week" && dk !== "month" && dk !== "year") {
+    const allowed: SubscriptionDurationKind[] = ["week", "month", "year", "months_3", "months_6", "months_9"];
+    if (!allowed.includes(dk)) {
       return NextResponse.json({ error: "مدة غير صالحة" }, { status: 400 });
     }
     patch.duration_kind = dk;

@@ -2,7 +2,7 @@ import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { authOptions } from "@/lib/auth";
-import { getCoursesAll, getCoursesWithCountsForCreator } from "@/lib/db";
+import { getCoursesAll, getCoursesWithCountsForCreator, getCategories } from "@/lib/db";
 import { LiveStreamForm } from "../LiveStreamForm";
 
 export default async function NewLiveStreamPage() {
@@ -32,6 +32,12 @@ export default async function NewLiveStreamPage() {
     title: (c as { title_ar?: string; title: string }).title_ar ?? c.title,
   }));
 
+  const categories = await getCategories().catch(() => []);
+  const categoryOptions = categories.map((c) => ({
+    id: c.id,
+    title: (c as { nameAr?: string | null; name_ar?: string | null; name: string }).nameAr ?? (c as { name_ar?: string | null }).name_ar ?? c.name,
+  }));
+
   return (
     <div>
       <Link
@@ -43,7 +49,7 @@ export default async function NewLiveStreamPage() {
       <h2 className="mt-4 text-xl font-bold text-[var(--color-foreground)]">
         إضافة بث مباشر
       </h2>
-      <LiveStreamForm courseOptions={courseOptions} />
+      <LiveStreamForm courseOptions={courseOptions} categoryOptions={categoryOptions} />
     </div>
   );
 }

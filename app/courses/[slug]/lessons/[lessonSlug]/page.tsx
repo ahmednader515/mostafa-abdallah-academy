@@ -9,9 +9,11 @@ import {
   hasFullCourseAccessAsStudent,
   ensureUserCopyrightCode,
   getHomepageSettings,
+  getCourseProgressForUser,
 } from "@/lib/db";
 import { YouTubeOverlayPlayer } from "@/components/YouTubeOverlayPlayer";
 import { CourseOutlineSidebar } from "@/components/CourseOutlineSidebar";
+import { MarkLessonComplete } from "@/components/MarkLessonComplete";
 import { LessonHomeworkSection } from "./LessonHomeworkSection";
 import { LessonRatingSection } from "./LessonRatingSection";
 import { getLocaleFromCookie, getServerTranslator } from "@/lib/i18n/server";
@@ -175,8 +177,32 @@ export default async function LessonPage({ params }: Props) {
   const prevItem = currentIndex > 0 ? items[currentIndex - 1] : null;
   const nextItem = currentIndex >= 0 && currentIndex < items.length - 1 ? items[currentIndex + 1] : null;
 
+  let completedLessonIds: string[] = [];
+  let passedQuizIds: string[] = [];
+  let progressPercent = 0;
+  const trackProgress = Boolean(session?.user?.id && (isStudent || isStaff) && (isEnrolled || hasFullStudentAccess || isStaff));
+  if (session?.user?.id && (isEnrolled || hasFullStudentAccess || isStaff)) {
+    const progress = await getCourseProgressForUser(
+      session.user.id,
+      course.id,
+      lessons.map((l) => ({ id: String(l.id) })),
+      quizzes.map((q) => ({ id: String(q.id) })),
+    );
+    completedLessonIds = progress.completedLessonIds;
+    passedQuizIds = progress.passedQuizIds;
+    progressPercent = progress.percent;
+  }
+
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
+      {trackProgress && session?.user?.id ? (
+        <MarkLessonComplete
+          courseId={course.id}
+          lessonId={String(lessonObj.id)}
+          courseSlug={courseSeg(course)}
+          enabled={isStudent || isStaff}
+        />
+      ) : null}
       <div className="mb-4">
         <Link href={courseHref(course)} className="text-sm font-medium text-[var(--color-primary)] hover:underline">
           ← {t("courses.backToCourse", "Back to")} {courseTitle}
@@ -277,6 +303,9 @@ export default async function LessonPage({ params }: Props) {
             quizzes={quizzes}
             currentLessonId={lessonObj.id as string}
             currentQuizId={null}
+            completedLessonIds={completedLessonIds}
+            passedQuizIds={passedQuizIds}
+            progressPercent={progressPercent}
           />
         </aside>
       </div>

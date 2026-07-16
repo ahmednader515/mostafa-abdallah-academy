@@ -12,6 +12,8 @@ import { getServerTranslator } from "@/lib/i18n/server";
 import { LibraryBrowseClient } from "./LibraryBrowseClient";
 import { LibraryPageReadyBeacon } from "./LibraryPageReadyBeacon";
 
+export const dynamic = "force-dynamic";
+
 export default async function LibraryPage() {
   const settings = await getHomepageSettings().catch(() => null);
   const session = await getServerSession(authOptions);
@@ -33,15 +35,20 @@ export default async function LibraryPage() {
     purchasedProductIds = purchases.map((p) => p.productId);
   }
 
-  if (!settings?.storeEnabled) {
+  // أظهر المكتبة دائماً إن وُجد محتوى؛ وإلا رسالة عند تعطيل المتجر وخلوّه
+  const storeEnabled = settings?.storeEnabled !== false;
+  if (!storeEnabled && products.length === 0) {
     return (
       <>
         <LibraryPageReadyBeacon />
         <section className="px-4 py-16 sm:px-6">
           <div className="mx-auto max-w-4xl rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] p-8 text-center">
             <h1 className="text-2xl font-bold text-[var(--color-foreground)]">
-              {t("library.disabled", "The platform library is not available right now.")}
+              {t("library.pageTitle", "Library")}
             </h1>
+            <p className="mt-3 text-[var(--color-muted)]">
+              {t("library.disabled", "The platform library is not available right now.")}
+            </p>
           </div>
         </section>
       </>

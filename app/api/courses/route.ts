@@ -14,6 +14,7 @@ import {
   createCategory,
   categoryIsManageableOnDashboard,
 } from "@/lib/db";
+import { updateCourseAccessFields, updateQuizPassingScore } from "@/lib/lms-spec-db";
 
 export async function GET() {
   try {
@@ -39,7 +40,7 @@ type LessonInput = {
 };
 type QuestionOptionInput = { text: string; isCorrect: boolean };
 type QuestionInput = { type: "MULTIPLE_CHOICE" | "ESSAY" | "TRUE_FALSE"; questionText: string; options?: QuestionOptionInput[] };
-type QuizInput = { title: string; timeLimitMinutes?: number | null; questions: QuestionInput[] };
+type QuizInput = { title: string; timeLimitMinutes?: number | null; passingScore?: number | null; questions: QuestionInput[] };
 
 export async function POST(request: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -68,6 +69,10 @@ export async function POST(request: NextRequest) {
     categoryNameAr?: string;
     categoryNameEn?: string;
     acceptsHomework?: boolean;
+    accessType?: "lifetime" | "duration_days" | "subscription_only";
+    accessDurationDays?: number | null;
+    deliveryMode?: "recorded" | "live" | "hybrid";
+    isVisible?: boolean;
     lessons?: LessonInput[];
     quizzes?: QuizInput[];
     contentOrder?: Array<{ type: "lesson"; index: number } | { type: "quiz"; index: number }>;
@@ -156,6 +161,17 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  try {
+    await updateCourseAccessFields(course.id, {
+      accessType: body.accessType ?? "lifetime",
+      accessDurationDays: body.accessType === "duration_days" ? body.accessDurationDays ?? null : null,
+      deliveryMode: body.deliveryMode ?? "recorded",
+      isVisible: body.isVisible ?? true,
+    });
+  } catch (e) {
+    console.error("updateCourseAccessFields error:", e);
+  }
+
   const lessons = body.lessons ?? [];
   const quizzes = body.quizzes ?? [];
   const contentOrder = body.contentOrder ?? [
@@ -196,6 +212,13 @@ export async function POST(request: NextRequest) {
       order: orderVal,
       time_limit_minutes: timeLimitMinutes,
     });
+    if (typeof q.passingScore === "number" && Number.isFinite(q.passingScore)) {
+      try {
+        await updateQuizPassingScore(quiz.id, Math.max(0, Math.min(100, Math.round(q.passingScore))));
+      } catch (e) {
+        console.error("updateQuizPassingScore error:", e);
+      }
+    }
     const questions = q.questions ?? [];
     for (let qti = 0; qti < questions.length; qti++) {
       const qt = questions[qti];
@@ -207,11 +230,13 @@ export async function POST(request: NextRequest) {
         order: qti + 1,
       });
       if ((qt.type === "MULTIPLE_CHOICE" || qt.type === "TRUE_FALSE") && Array.isArray(qt.options)) {
-        for (const opt of qt.options) {
+        for (let oi = 0; oi < qt.options.length; oi++) {
+          const opt = qt.options[oi];
           await createQuestionOption({
             question_id: question.id,
             text: opt.text?.trim() || "",
             is_correct: !!opt.isCorrect,
+            order: oi,
           });
         }
       }

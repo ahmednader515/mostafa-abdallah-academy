@@ -1,6 +1,5 @@
-import { redirect } from "next/navigation";
 import { unstable_noStore } from "next/cache";
-import { getTeachersFeatureEnabled, listTeachersForHomepage } from "@/lib/db";
+import { listTeachersForHomepage } from "@/lib/db";
 import { TeachersBrowseClient } from "./TeachersBrowseClient";
 
 export const dynamic = "force-dynamic";
@@ -13,10 +12,6 @@ export const metadata = {
 
 export default async function TeachersPage() {
   unstable_noStore();
-  const enabled = await getTeachersFeatureEnabled();
-  if (!enabled) {
-    redirect("/");
-  }
   const teachers = await listTeachersForHomepage().catch(() => []);
 
   return <TeachersBrowseClient initialTeachers={teachers} />;

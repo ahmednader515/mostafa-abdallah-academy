@@ -18,6 +18,7 @@ import {
   createCategory,
   categoryIsManageableOnDashboard,
 } from "@/lib/db";
+import { updateCourseAccessFields, getCourseAccessFields, updateQuizPassingScore } from "@/lib/lms-spec-db";
 
 type LessonAttachmentInput = { title?: string; fileUrl: string; fileType?: string; fileName?: string };
 type LessonInput = {
@@ -31,7 +32,7 @@ type LessonInput = {
 };
 type QuestionOptionInput = { text: string; isCorrect: boolean };
 type QuestionInput = { type: "MULTIPLE_CHOICE" | "ESSAY" | "TRUE_FALSE"; questionText: string; options?: QuestionOptionInput[] };
-type QuizInput = { title: string; timeLimitMinutes?: number | null; questions: QuestionInput[] };
+type QuizInput = { title: string; timeLimitMinutes?: number | null; passingScore?: number | null; questions: QuestionInput[] };
 type ContentOrderEntry = { type: "lesson"; index: number } | { type: "quiz"; index: number };
 
 /** تحديث دورة - للأدمن ومساعد الأدمن */
@@ -66,6 +67,10 @@ export async function PUT(
     categoryNameAr?: string;
     categoryNameEn?: string;
     acceptsHomework?: boolean;
+    accessType?: "lifetime" | "duration_days" | "subscription_only";
+    accessDurationDays?: number | null;
+    deliveryMode?: "recorded" | "live" | "hybrid";
+    isVisible?: boolean;
     lessons?: LessonInput[];
     quizzes?: QuizInput[];
     contentOrder?: ContentOrderEntry[];
@@ -151,6 +156,19 @@ export async function PUT(
     ...(body.acceptsHomework !== undefined && { accepts_homework: body.acceptsHomework }),
   });
 
+  try {
+    await updateCourseAccessFields(id, {
+      ...(body.accessType !== undefined && { accessType: body.accessType }),
+      ...(body.accessDurationDays !== undefined && {
+        accessDurationDays: body.accessType === "duration_days" ? body.accessDurationDays ?? null : null,
+      }),
+      ...(body.deliveryMode !== undefined && { deliveryMode: body.deliveryMode }),
+      ...(body.isVisible !== undefined && { isVisible: body.isVisible }),
+    });
+  } catch (e) {
+    console.error("updateCourseAccessFields error:", e);
+  }
+
   await deleteLessonsByCourseId(id);
   const lessons = body.lessons ?? [];
   const quizzes = body.quizzes ?? [];
@@ -195,6 +213,13 @@ export async function PUT(
       order: orderVal,
       time_limit_minutes: timeLimitMinutes,
     });
+    if (typeof q.passingScore === "number" && Number.isFinite(q.passingScore)) {
+      try {
+        await updateQuizPassingScore(quiz.id, Math.max(0, Math.min(100, Math.round(q.passingScore))));
+      } catch (e) {
+        console.error("updateQuizPassingScore error:", e);
+      }
+    }
     const questions = q.questions ?? [];
     for (let qti = 0; qti < questions.length; qti++) {
       const qt = questions[qti];
@@ -206,11 +231,13 @@ export async function PUT(
         order: qti + 1,
       });
       if ((qt.type === "MULTIPLE_CHOICE" || qt.type === "TRUE_FALSE") && Array.isArray(qt.options)) {
-        for (const opt of qt.options) {
+        for (let oi = 0; oi < qt.options.length; oi++) {
+          const opt = qt.options[oi];
           await createQuestionOption({
             question_id: question.id,
             text: opt.text?.trim() || "",
             is_correct: !!opt.isCorrect,
+            order: oi,
           });
         }
       }
@@ -242,6 +269,12 @@ export async function GET(
   }
 
   const c = data.course;
+  let accessFields: Awaited<ReturnType<typeof getCourseAccessFields>> = null;
+  try {
+    accessFields = await getCourseAccessFields(id);
+  } catch {
+    accessFields = null;
+  }
   const payload = {
     id: c.id,
     title: c.title,
@@ -259,6 +292,10 @@ export async function GET(
     isPublished: c.isPublished ?? c.is_published ?? true,
     maxQuizAttempts: c.maxQuizAttempts ?? c.max_quiz_attempts ?? null,
     categoryId: (c as { categoryId?: string | null }).categoryId ?? null,
+    accessType: accessFields?.accessType ?? "lifetime",
+    accessDurationDays: accessFields?.accessDurationDays ?? null,
+    isVisible: accessFields?.isVisible ?? true,
+    deliveryMode: accessFields?.deliveryMode ?? "recorded",
     lessons: data.lessons.map((l) => ({
       title: l.title,
       titleAr: l.titleAr ?? l.title_ar,
@@ -278,6 +315,7 @@ export async function GET(
     quizzes: data.quizzes.map((q) => ({
       title: q.title,
       timeLimitMinutes: (q as { timeLimitMinutes?: number | null }).timeLimitMinutes ?? null,
+      passingScore: (q as { passingScore?: number | null }).passingScore ?? null,
       questions: (q.questions ?? []).map((qt) => ({
         type: qt.type,
         questionText: qt.questionText ?? qt.question_text,

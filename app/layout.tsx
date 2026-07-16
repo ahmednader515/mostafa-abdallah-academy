@@ -7,6 +7,7 @@ import { AppShell } from "@/components/AppShell";
 import { Footer } from "@/components/Footer";
 import type { SidebarSocialLink } from "@/components/AppSidebar";
 import { SessionProvider } from "@/components/SessionProvider";
+import { SiteBrandProvider } from "@/components/SiteBrandProvider";
 import { StoreSplashProvider } from "@/components/StoreSplashProvider";
 import { InspectGuard } from "@/components/InspectGuard";
 import { ForceLogoutGuard } from "@/components/ForceLogoutGuard";
@@ -17,9 +18,11 @@ import {
   getLatestPlatformSubscriptionExpiry,
 } from "@/lib/db";
 import { normalizeHeroHex } from "@/lib/hero-bg";
+import { getBrandAndAnalyticsSettings } from "@/lib/lms-spec-db";
 import { getDir, makeTranslator } from "@/lib/i18n/core";
 import { getLocaleFromCookie } from "@/lib/i18n/server";
 import { LocaleProvider } from "@/components/LocaleProvider";
+import { LabelsProvider } from "@/components/LabelsProvider";
 import { CurrencyProvider } from "@/components/CurrencyProvider";
 import { homepageDefaultForLocale } from "@/lib/homepage-default-for-locale";
 import { pickLocalizedText } from "@/lib/i18n/localized-field";
@@ -159,6 +162,33 @@ export default async function RootLayout({
     platformSubscriptionExpiryLabel = null;
   }
 
+  let brandSecondaryColor: string | null = null;
+  let brandAccentColor: string | null = null;
+  let brandBackgroundColor: string | null = null;
+  let brandFaviconUrl: string | null = null;
+  let ga4Id: string | null = null;
+  let gtmId: string | null = null;
+  let facebookPixelId: string | null = null;
+  try {
+    const brand = await getBrandAndAnalyticsSettings();
+    brandSecondaryColor = normalizeHeroHex(String(brand.secondaryColor ?? "")) ?? null;
+    brandAccentColor = normalizeHeroHex(String(brand.accentColor ?? "")) ?? null;
+    brandBackgroundColor = normalizeHeroHex(String(brand.backgroundColor ?? "")) ?? null;
+    brandFaviconUrl = brand.faviconUrl?.trim() || null;
+    ga4Id = brand.ga4Id?.trim() || null;
+    gtmId = brand.gtmId?.trim() || null;
+    facebookPixelId = brand.facebookPixelId?.trim() || null;
+  } catch {
+    /* الجدول قد لا يكون جاهزاً بعد */
+  }
+
+  const rootCssVars = [
+    platformPrimaryColor ? `--platform-primary:${platformPrimaryColor};` : "",
+    brandSecondaryColor ? `--platform-secondary:${brandSecondaryColor};` : "",
+    brandAccentColor ? `--platform-accent:${brandAccentColor};` : "",
+    brandBackgroundColor ? `--color-background:${brandBackgroundColor};` : "",
+  ].join("");
+
   return (
     <html lang={locale} dir={dir} suppressHydrationWarning>
       <head>
@@ -167,15 +197,50 @@ export default async function RootLayout({
             __html: `(function(){var t=localStorage.getItem("theme");document.documentElement.classList.add(t==="dark"?"dark":"light");})();`,
           }}
         />
-        {platformPrimaryColor ? (
+        {rootCssVars ? (
           <style
             dangerouslySetInnerHTML={{
-              __html: `:root{--platform-primary:${platformPrimaryColor};}`,
+              __html: `:root{${rootCssVars}}`,
+            }}
+          />
+        ) : null}
+        {brandFaviconUrl ? <link rel="icon" href={brandFaviconUrl} /> : null}
+        {gtmId ? (
+          <script
+            dangerouslySetInnerHTML={{
+              __html: `(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src='https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);})(window,document,'script','dataLayer','${gtmId}');`,
+            }}
+          />
+        ) : null}
+        {ga4Id ? (
+          <>
+            <script async src={`https://www.googletagmanager.com/gtag/js?id=${ga4Id}`} />
+            <script
+              dangerouslySetInnerHTML={{
+                __html: `window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js', new Date());gtag('config', '${ga4Id}');`,
+              }}
+            />
+          </>
+        ) : null}
+        {facebookPixelId ? (
+          <script
+            dangerouslySetInnerHTML={{
+              __html: `!function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window, document,'script','https://connect.facebook.net/en_US/fbevents.js');fbq('init', '${facebookPixelId}');fbq('track', 'PageView');`,
             }}
           />
         ) : null}
       </head>
       <body className={`${cairo.variable} ${cairo.className} font-sans antialiased min-h-screen`}>
+        {gtmId ? (
+          <noscript>
+            <iframe
+              src={`https://www.googletagmanager.com/ns.html?id=${gtmId}`}
+              height="0"
+              width="0"
+              style={{ display: "none", visibility: "hidden" }}
+            />
+          </noscript>
+        ) : null}
         <NextTopLoader
           color={platformPrimaryColor ?? "#2563EB"}
           height={3}
@@ -185,29 +250,33 @@ export default async function RootLayout({
           shadow="0 0 10px rgba(37,99,235,0.4)"
         />
         <LocaleProvider locale={locale}>
-          <CurrencyProvider>
-            <SessionProvider>
-              <StoreSplashProvider>
-                <InspectGuard />
-                <ForceLogoutGuard />
-                <AppShell
-                  platformName={platformName}
-                  headerLogoUrl={headerLogoUrl}
-                  platformSubscriptionExpiryLabel={platformSubscriptionExpiryLabel}
-                  socialLinks={socialLinks}
-                  footer={
-                    <Footer
-                      footerTitle={footerTitle}
-                      footerTagline={footerTagline}
-                      footerCopyright={footerCopyright}
-                    />
-                  }
-                >
-                  {children}
-                </AppShell>
-              </StoreSplashProvider>
-            </SessionProvider>
-          </CurrencyProvider>
+          <LabelsProvider>
+            <CurrencyProvider>
+              <SiteBrandProvider platformName={platformName} headerLogoUrl={headerLogoUrl}>
+                <SessionProvider>
+                  <StoreSplashProvider>
+                    <InspectGuard />
+                    <ForceLogoutGuard />
+                    <AppShell
+                      platformName={platformName}
+                      headerLogoUrl={headerLogoUrl}
+                      platformSubscriptionExpiryLabel={platformSubscriptionExpiryLabel}
+                      socialLinks={socialLinks}
+                      footer={
+                        <Footer
+                          footerTitle={footerTitle}
+                          footerTagline={footerTagline}
+                          footerCopyright={footerCopyright}
+                        />
+                      }
+                    >
+                      {children}
+                    </AppShell>
+                  </StoreSplashProvider>
+                </SessionProvider>
+              </SiteBrandProvider>
+            </CurrencyProvider>
+          </LabelsProvider>
         </LocaleProvider>
       </body>
     </html>

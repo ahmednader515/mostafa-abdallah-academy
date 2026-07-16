@@ -9,7 +9,10 @@ import {
   createQuizAttempt,
   updateQuizAttemptById,
   hasFullCourseAccessAsStudent,
+  getCourseProgressForUser,
+  getCourseWithContent,
 } from "@/lib/db";
+import { issueCertificateIfPassed } from "@/lib/lms-spec-db";
 
 /**
  * جلب اختبار بالمعرّف — مع التحقق من حد المحاولات إن وُجد.
@@ -185,7 +188,45 @@ export async function POST(
     } else {
       await createQuizAttempt(session.user.id, quizId, score, totalQuestions);
     }
-    return NextResponse.json({ success: true });
+
+    let certificateId: string | null = null;
+    let certificateRecordId: string | null = null;
+    try {
+      const certificate = await issueCertificateIfPassed(
+        session.user.id,
+        quizId,
+        score,
+        totalQuestions,
+        attemptId,
+      );
+      certificateId = certificate?.certificateId ?? null;
+      certificateRecordId = certificate?.id ?? null;
+    } catch (certErr) {
+      console.error("issueCertificateIfPassed error:", certErr);
+    }
+
+    let courseCompleted = false;
+    try {
+      const courseData = await getCourseWithContent(courseId);
+      if (courseData) {
+        const progress = await getCourseProgressForUser(
+          session.user.id,
+          courseId,
+          courseData.lessons.map((l: { id: string }) => ({ id: String(l.id) })),
+          (courseData.quizzes ?? []).map((q: { id: string }) => ({ id: String(q.id) })),
+        );
+        courseCompleted = progress.isComplete;
+      }
+    } catch (progErr) {
+      console.error("course progress check error:", progErr);
+    }
+
+    return NextResponse.json({
+      success: true,
+      certificateId,
+      certificateRecordId,
+      courseCompleted,
+    });
   } catch (e) {
     console.error("API quizzes [quizId] POST:", e);
     return NextResponse.json({ error: "حدث خطأ في تسجيل النتيجة" }, { status: 500 });

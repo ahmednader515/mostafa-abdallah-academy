@@ -23,7 +23,6 @@ type Student = {
   role: string;
   balance: number;
   student_number?: string | null;
-  guardian_number?: string | null;
   copyright_code?: string | null;
   _count: { enrollments: number };
   enrollments: Enrollment[];
@@ -68,7 +67,6 @@ export function StudentsList({
   const [editRole, setEditRole] = useState("");
   const [editPassword, setEditPassword] = useState("");
   const [editStudentNumber, setEditStudentNumber] = useState("");
-  const [editGuardianNumber, setEditGuardianNumber] = useState("");
   const [coursesStudent, setCoursesStudent] = useState<Student | null>(null);
   const [addCourseId, setAddCourseId] = useState("");
   const [loading, setLoading] = useState(false);
@@ -87,8 +85,6 @@ export function StudentsList({
         s.email.toLowerCase().includes(q) ||
         (s.student_number ?? "").toLowerCase().includes(q) ||
         formatPhoneForDisplay(s.student_number).toLowerCase().includes(q) ||
-        (s.guardian_number ?? "").toLowerCase().includes(q) ||
-        formatPhoneForDisplay(s.guardian_number).toLowerCase().includes(q) ||
         (s.copyright_code ?? "").toLowerCase().includes(q),
     );
   }, [initialStudents, search]);
@@ -100,7 +96,6 @@ export function StudentsList({
     setEditRole(s.role);
     setEditPassword("");
     setEditStudentNumber(s.student_number ?? "");
-    setEditGuardianNumber(s.guardian_number ?? "");
     setError("");
   }
 
@@ -115,11 +110,9 @@ export function StudentsList({
       role?: string;
       password?: string;
       student_number?: string | null;
-      guardian_number?: string | null;
     } = {
       name: editName.trim(),
       student_number: editStudentNumber.trim() || null,
-      guardian_number: editGuardianNumber.trim() || null,
     };
     if (canEditFullProfile) {
       payload.email = editEmail.trim();
@@ -215,7 +208,7 @@ export function StudentsList({
         <label className="block text-sm font-medium text-[var(--color-foreground)]">
           {t(
             "dashboard.studentsPage.searchLabel",
-            "Search by name, email, student number, guardian number, or copyright code",
+            "Search by name, email, student number, or copyright code",
           )}
         </label>
         <input
@@ -237,7 +230,6 @@ export function StudentsList({
               <th className={thClass}>{t("dashboard.studentsPage.colName", "Name")}</th>
               <th className={thClass}>{t("dashboard.studentsPage.colEmail", "Email")}</th>
               <th className={thClass}>{t("dashboard.studentsPage.colStudentNumber", "Student number")}</th>
-              <th className={thClass}>{t("dashboard.studentsPage.colGuardianNumber", "Guardian number")}</th>
               <th className={thClass}>{t("dashboard.studentsPage.colCopyright", "Copyright code")}</th>
               <th className={thClass}>{t("dashboard.studentsPage.colBalance", "Balance")}</th>
               <th className={thClass}>{t("dashboard.studentsPage.colCourses", "Courses")}</th>
@@ -257,9 +249,6 @@ export function StudentsList({
                 <td className="p-3 text-[var(--color-muted)]">{s.email}</td>
                 <td className="p-3 text-[var(--color-foreground)]">
                   <DisplayPhoneNumber value={s.student_number} fallback={dash} />
-                </td>
-                <td className="p-3 text-[var(--color-foreground)]">
-                  <DisplayPhoneNumber value={s.guardian_number} fallback={dash} />
                 </td>
                 <td className="p-3 font-mono text-sm text-[var(--color-foreground)]">
                   {s.copyright_code ?? dash}
@@ -442,21 +431,6 @@ export function StudentsList({
                   placeholder={t(
                     "dashboard.studentsPage.studentNumberPlaceholder",
                     "Student number",
-                  )}
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-[var(--color-foreground)]">
-                  {t("dashboard.studentsPage.guardianNumberLabel", "Guardian number")}
-                </label>
-                <input
-                  type="text"
-                  value={editGuardianNumber}
-                  onChange={(e) => setEditGuardianNumber(e.target.value)}
-                  className="mt-1 w-full rounded-[var(--radius-btn)] border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2"
-                  placeholder={t(
-                    "dashboard.studentsPage.guardianNumberPlaceholder",
-                    "Guardian number",
                   )}
                 />
               </div>

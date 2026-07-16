@@ -5,13 +5,14 @@ import { useRouter } from "next/navigation";
 import { useT } from "@/components/LocaleProvider";
 import { useDashboardTable } from "@/lib/i18n/dashboard-table";
 import { fillMessage } from "@/lib/i18n/interpolate";
+import type { SubscriptionDurationKind } from "@/lib/types";
 
 export type AdminPlanRow = {
   id: string;
   name: string;
   description: string;
   imageUrl: string | null;
-  durationKind: "week" | "month" | "year";
+  durationKind: SubscriptionDurationKind;
   price: number;
   isActive: boolean;
 };
@@ -32,6 +33,9 @@ export function SubscriptionsAdminClient({
   function dkLabel(d: string): string {
     if (d === "week") return t(`${Su}.durationWeek`);
     if (d === "month") return t(`${Su}.durationMonth`);
+    if (d === "months_3") return t(`${Su}.durationMonths3`, "3 months");
+    if (d === "months_6") return t(`${Su}.durationMonths6`, "6 months");
+    if (d === "months_9") return t(`${Su}.durationMonths9`, "9 months");
     if (d === "year") return t(`${Su}.durationYear`);
     return d;
   }
@@ -44,7 +48,7 @@ export function SubscriptionsAdminClient({
 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [durationKind, setDurationKind] = useState<"week" | "month" | "year">("month");
+  const [durationKind, setDurationKind] = useState<SubscriptionDurationKind>("month");
   const [price, setPrice] = useState("");
   const [imageUrl, setImageUrl] = useState("");
   const [imageUploading, setImageUploading] = useState(false);
@@ -54,7 +58,7 @@ export function SubscriptionsAdminClient({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [editDescription, setEditDescription] = useState("");
-  const [editDurationKind, setEditDurationKind] = useState<"week" | "month" | "year">("month");
+  const [editDurationKind, setEditDurationKind] = useState<SubscriptionDurationKind>("month");
   const [editPrice, setEditPrice] = useState("");
   const [editImageUrl, setEditImageUrl] = useState("");
   const [editActive, setEditActive] = useState(true);
@@ -299,11 +303,14 @@ export function SubscriptionsAdminClient({
             <label className="block text-sm font-medium text-[var(--color-foreground)]">{t(`${Su}.labelDuration`)}</label>
             <select
               value={durationKind}
-              onChange={(e) => setDurationKind(e.target.value as "week" | "month" | "year")}
+              onChange={(e) => setDurationKind(e.target.value as SubscriptionDurationKind)}
               className="mt-1 w-full rounded-[var(--radius-btn)] border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2 text-[var(--color-foreground)]"
             >
               <option value="week">{t(`${Su}.durationWeek`)}</option>
               <option value="month">{t(`${Su}.durationMonth`)}</option>
+              <option value="months_3">{t(`${Su}.durationMonths3`, "3 months")}</option>
+              <option value="months_6">{t(`${Su}.durationMonths6`, "6 months")}</option>
+              <option value="months_9">{t(`${Su}.durationMonths9`, "9 months")}</option>
               <option value="year">{t(`${Su}.durationYear`)}</option>
             </select>
           </div>
@@ -472,11 +479,14 @@ export function SubscriptionsAdminClient({
                 <label className="block text-sm font-medium text-[var(--color-foreground)]">{t(`${Su}.labelDuration`)}</label>
                 <select
                   value={editDurationKind}
-                  onChange={(e) => setEditDurationKind(e.target.value as "week" | "month" | "year")}
+                  onChange={(e) => setEditDurationKind(e.target.value as SubscriptionDurationKind)}
                   className="mt-1 w-full rounded-[var(--radius-btn)] border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2 text-[var(--color-foreground)]"
                 >
                   <option value="week">{t(`${Su}.durationWeek`)}</option>
                   <option value="month">{t(`${Su}.durationMonth`)}</option>
+                  <option value="months_3">{t(`${Su}.durationMonths3`, "3 months")}</option>
+                  <option value="months_6">{t(`${Su}.durationMonths6`, "6 months")}</option>
+                  <option value="months_9">{t(`${Su}.durationMonths9`, "9 months")}</option>
                   <option value="year">{t(`${Su}.durationYear`)}</option>
                 </select>
               </div>

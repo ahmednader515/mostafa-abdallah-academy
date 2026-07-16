@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { canManageCourse } from "@/lib/permissions";
 import { getCourseById, getLiveStreamById, updateLiveStream, deleteLiveStream } from "@/lib/db";
+import { updateLiveStreamSpecFields } from "@/lib/lms-spec-db";
 
 async function assertStaffCanAccessStream(
   role: string,
@@ -53,21 +54,32 @@ export async function PUT(
     courseId?: string;
     title?: string;
     titleAr?: string | null;
-    provider?: "zoom" | "google_meet";
+    provider?: "zoom" | "google_meet" | "youtube_live" | "external";
     meetingUrl?: string;
     meetingId?: string | null;
     meetingPassword?: string | null;
     scheduledAt?: string;
     description?: string | null;
     order?: number;
+    categoryId?: string | null;
+    durationMinutes?: number | null;
+    showOnHomepage?: boolean;
+    accessMode?: string;
+    recordingUrl?: string | null;
   };
   try {
     body = await request.json();
   } catch {
     return NextResponse.json({ error: "طلب غير صالح" }, { status: 400 });
   }
-  if (body.provider !== undefined && body.provider !== "zoom" && body.provider !== "google_meet") {
-    return NextResponse.json({ error: "نوع البث يجب أن يكون zoom أو google_meet" }, { status: 400 });
+  if (
+    body.provider !== undefined &&
+    body.provider !== "zoom" &&
+    body.provider !== "google_meet" &&
+    body.provider !== "youtube_live" &&
+    body.provider !== "external"
+  ) {
+    return NextResponse.json({ error: "نوع البث غير صالح" }, { status: 400 });
   }
   try {
     if (body.courseId !== undefined) await updateLiveStream(id, { course_id: body.courseId });
@@ -80,6 +92,21 @@ export async function PUT(
     if (body.scheduledAt !== undefined) await updateLiveStream(id, { scheduled_at: new Date(body.scheduledAt) });
     if (body.description !== undefined) await updateLiveStream(id, { description: body.description });
     if (body.order !== undefined) await updateLiveStream(id, { order: body.order });
+    if (
+      body.categoryId !== undefined ||
+      body.durationMinutes !== undefined ||
+      body.showOnHomepage !== undefined ||
+      body.accessMode !== undefined ||
+      body.recordingUrl !== undefined
+    ) {
+      await updateLiveStreamSpecFields(id, {
+        categoryId: body.categoryId,
+        durationMinutes: body.durationMinutes,
+        showOnHomepage: body.showOnHomepage,
+        accessMode: body.accessMode,
+        recordingUrl: body.recordingUrl,
+      });
+    }
     const updated = await getLiveStreamById(id);
     return NextResponse.json(updated);
   } catch (e) {

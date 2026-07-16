@@ -15,6 +15,7 @@ import {
   listStudentStorePurchases,
   userHasActivePlatformSubscription,
   getLatestPlatformSubscriptionExpiry,
+  getEnrollmentsWithCourseByUserId,
 } from "@/lib/db";
 import { getServerTranslator } from "@/lib/i18n/server";
 import { MyCoursesSection } from "./MyCoursesSection";
@@ -170,6 +171,10 @@ export default async function DashboardPage() {
       subscriptionsFeature = false;
     }
 
+    const enrollmentsWithExpiry = (await getEnrollmentsWithCourseByUserId(session.user.id).catch(() => [])).filter(
+      (e) => e.expiresAt,
+    );
+
     return (
       <div className="space-y-8">
         <div className="grid gap-6 sm:grid-cols-2">
@@ -225,6 +230,20 @@ export default async function DashboardPage() {
               {t("dashboard.page.openMessagesButton", "Open messages")}
             </span>
           </Link>
+          <Link
+            href="/certificates"
+            className="flex flex-col justify-center rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] p-6 shadow-[var(--shadow-card)] text-center transition hover:border-[var(--color-primary)]/30"
+          >
+            <h2 className="text-lg font-semibold text-[var(--color-foreground)]">
+              {t("dashboard.page.certificatesTitle", "My certificates")}
+            </h2>
+            <p className="mt-2 text-sm text-[var(--color-muted)]">
+              {t("dashboard.page.certificatesDesc", "View and print certificates you've earned")}
+            </p>
+            <span className="mt-4 inline-flex w-fit self-center rounded-[var(--radius-btn)] bg-[var(--color-primary)] px-5 py-2.5 text-base font-medium text-white transition hover:bg-[var(--color-primary-hover)]">
+              {t("dashboard.page.viewCertificatesButton", "View certificates")}
+            </span>
+          </Link>
         </div>
 
         {subscriptionsFeature ? (
@@ -233,6 +252,37 @@ export default async function DashboardPage() {
             hasActivePlatformSubscription={studentHasActiveSub}
             activePlatformSubscriptionExpiresAtIso={studentSubExpiresIso}
           />
+        ) : null}
+
+        {enrollmentsWithExpiry.length > 0 ? (
+          <section className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] p-6 shadow-[var(--shadow-card)]">
+            <h2 className="mb-4 text-lg font-semibold text-[var(--color-foreground)]">
+              {t("dashboard.page.enrollmentExpiryTitle", "Course access expiry")}
+            </h2>
+            <ul className="space-y-2">
+              {enrollmentsWithExpiry.map((e) => {
+                const expiresAt = e.expiresAt ? new Date(e.expiresAt as string | Date) : null;
+                // eslint-disable-next-line react-hooks/purity -- server component: snapshot time at request render
+                const expired = expiresAt ? expiresAt.getTime() < Date.now() : false;
+                return (
+                  <li
+                    key={e.id}
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-[var(--radius-btn)] border border-[var(--color-border)] px-4 py-3"
+                  >
+                    <span className="font-medium text-[var(--color-foreground)]">
+                      {e.course.titleAr || e.course.title}
+                    </span>
+                    <span className={`text-sm ${expired ? "text-red-600 dark:text-red-400" : "text-[var(--color-muted)]"}`}>
+                      {expired
+                        ? t("dashboard.page.enrollmentExpired", "Access expired on")
+                        : t("dashboard.page.enrollmentExpiresOn", "Access expires on")}{" "}
+                      {expiresAt?.toLocaleDateString()}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
         ) : null}
 
         {storePurchases.length > 0 ? (

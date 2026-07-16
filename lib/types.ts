@@ -4,6 +4,84 @@
 
 export type UserRole = "ADMIN" | "ASSISTANT_ADMIN" | "STUDENT" | "TEACHER";
 
+export type CourseAccessType = "lifetime" | "duration_days" | "subscription_only";
+export type CourseDeliveryMode = "recorded" | "live" | "hybrid";
+export type LiveStreamAccessMode = "public" | "members" | "paid" | "subscribers" | "course_enrolled";
+export type HomepageSectionType =
+  | "courses" | "library" | "jobs" | "teachers" | "reviews" | "live" | "social"
+  | "subscriptions" | "news" | "platform_details" | "custom";
+
+export interface PlatformLabel {
+  key: string;
+  valueAr: string;
+  valueEn: string;
+  groupName: string;
+  updatedAt?: Date;
+}
+
+export interface PaymentMethod {
+  id: string;
+  type: string; // vodafone_cash | instapay | fawaterak | custom
+  name: string;
+  nameAr: string | null;
+  accountDetails: string | null;
+  instructions: string | null;
+  instructionsEn: string | null;
+  configJson: string | null;
+  isEnabled: boolean;
+  order: number;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
+export interface Notification {
+  id: string;
+  userId: string;
+  type: string;
+  title: string;
+  body: string | null;
+  link: string | null;
+  readAt: Date | null;
+  createdAt: Date;
+}
+
+export interface Certificate {
+  id: string;
+  certificateId: string;
+  userId: string;
+  courseId: string;
+  quizId: string | null;
+  attemptId: string | null;
+  studentName: string;
+  courseTitle: string;
+  score: number | null;
+  issuedAt: Date;
+}
+
+export interface HomepageSection {
+  id: string;
+  sectionType: HomepageSectionType | string;
+  title: string | null;
+  titleEn: string | null;
+  icon: string | null;
+  configJson: string | null;
+  order: number;
+  isVisible: boolean;
+  isPinned: boolean;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
+export interface SocialLink {
+  id: string;
+  network: string;
+  label: string | null;
+  labelEn: string | null;
+  url: string;
+  isEnabled: boolean;
+  order: number;
+}
+
 export interface User {
   id: string;
   email: string;
@@ -35,6 +113,14 @@ export interface Category {
   order: number;
   /** من أنشأ القسم (بعد rowToCamel من قاعدة البيانات) */
   createdById?: string | null;
+  /** القسم الأب — لدعم الأقسام الفرعية */
+  parentId?: string | null;
+  /** ظهور/إخفاء القسم في الواجهة */
+  isVisible?: boolean;
+  /** تثبيت القسم في أعلى القائمة */
+  isPinned?: boolean;
+  /** ترتيب التثبيت بين الأقسام المثبتة */
+  pinOrder?: number | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -280,6 +366,20 @@ export interface HomepageSetting {
   statsRibbonJson?: string | null;
   /** تفعيل أزرار التنقل الرئيسية (JSON: { jobs, courses, library, social }) */
   mainNavFlagsJson?: string | null;
+  /** لون ثانوي للمنصة (#RRGGBB) */
+  secondaryColor?: string | null;
+  /** لون التمييز/الأزرار البارزة (#RRGGBB) */
+  accentColor?: string | null;
+  /** لون خلفية عام للمنصة (#RRGGBB) */
+  backgroundColor?: string | null;
+  /** أيقونة التبويب (favicon) */
+  faviconUrl?: string | null;
+  /** معرّف Google Analytics 4 */
+  ga4Id?: string | null;
+  /** معرّف Google Tag Manager */
+  gtmId?: string | null;
+  /** معرّف بيكسل فيسبوك */
+  facebookPixelId?: string | null;
 }
 
 export type StoreProductContentType = "file" | "article";
@@ -325,7 +425,7 @@ export interface JobPosting {
   updatedAt: string;
 }
 
-export type SubscriptionDurationKind = "week" | "month" | "year";
+export type SubscriptionDurationKind = "week" | "month" | "year" | "months_3" | "months_6" | "months_9";
 
 export interface Course {
   id: string;
@@ -349,6 +449,14 @@ export interface Course {
   course_rating?: number | null;
   /** عدد تقييمات الدروس المستخدمة في متوسط الكورس */
   course_rating_count?: number;
+  /** نوع وصول الطالب للكورس: مدى الحياة / عدد أيام محدد / اشتراك فقط */
+  accessType?: CourseAccessType | string | null;
+  /** عدد أيام الوصول عندما accessType = duration_days */
+  accessDurationDays?: number | null;
+  /** ظهور/إخفاء الكورس في الواجهة (بخلاف is_published) */
+  isVisible?: boolean;
+  /** طريقة تسليم الكورس: مسجّل / مباشر / مختلط */
+  deliveryMode?: CourseDeliveryMode | string | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -377,7 +485,20 @@ export interface LessonRating {
   updated_at: Date;
 }
 
-export type LessonAttachmentFileType = "pdf" | "doc" | "docx" | "xls" | "xlsx" | "ppt" | "pptx" | "video" | "other";
+export type LessonAttachmentFileType =
+  | "pdf"
+  | "doc"
+  | "docx"
+  | "xls"
+  | "xlsx"
+  | "ppt"
+  | "pptx"
+  | "video"
+  | "link"
+  | "youtube"
+  | "drive"
+  | "url"
+  | "other";
 
 export interface LessonAttachment {
   id: string;
@@ -403,6 +524,12 @@ export interface Lesson {
   order: number;
   course_id: string;
   accepts_homework?: boolean;
+  /** ظهور/إخفاء الحصة في الواجهة */
+  isVisible?: boolean;
+  /** موعد نشر/جدولة الحصة (لو مستقبلي تُخفى عن الطلاب حتى موعدها) */
+  scheduledAt?: Date | string | null;
+  /** روابط خارجية إضافية (JSON) — يوتيوب/درايف/مواقع خارجية */
+  externalLinks?: string | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -415,6 +542,8 @@ export interface Quiz {
   course_id: string;
   order: number;
   time_limit_minutes?: number | null;
+  /** الحد الأدنى للنجاح (نسبة %) — يُستخدم لإصدار شهادة تلقائياً */
+  passingScore?: number | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -433,6 +562,7 @@ export interface QuestionOption {
   id: string;
   text: string;
   is_correct: boolean;
+  order?: number;
   question_id: string;
   created_at: Date;
   updated_at: Date;
@@ -443,6 +573,10 @@ export interface Enrollment {
   user_id: string;
   course_id: string;
   enrolled_at: Date;
+  /** وقت تفعيل الوصول الفعلي (قد يختلف عن enrolled_at) */
+  activatedAt?: Date | string | null;
+  /** وقت انتهاء صلاحية الوصول — null يعني وصول مدى الحياة */
+  expiresAt?: Date | string | null;
 }
 
 /** كود تفعيل مجاني لدورة — للأدمن إنشاؤه وللطالب تفعيله */
@@ -455,11 +589,14 @@ export interface ActivationCode {
   used_by_user_id: string | null;
 }
 
-export type LiveStreamProvider = "zoom" | "google_meet";
+export type LiveStreamProvider = "zoom" | "google_meet" | "youtube_live" | "external";
 
 export interface LiveStream {
   id: string;
-  course_id: string;
+  /** أصبح اختيارياً — يمكن للحصة المباشرة أن تكون مستقلة عن كورس محدد */
+  course_id?: string | null;
+  /** نفس course_id بصيغة camelCase (بعد rowToCamel) */
+  courseId?: string | null;
   title: string;
   title_ar: string | null;
   provider: LiveStreamProvider;
@@ -469,6 +606,16 @@ export interface LiveStream {
   scheduled_at: Date;
   description: string | null;
   order: number;
+  /** قسم البث المباشر (اختياري) */
+  categoryId?: string | null;
+  /** مدة البث بالدقائق */
+  durationMinutes?: number | null;
+  /** إظهار البث في الصفحة الرئيسية */
+  showOnHomepage?: boolean;
+  /** من يمكنه الوصول للبث */
+  accessMode?: LiveStreamAccessMode | string | null;
+  /** رابط التسجيل بعد انتهاء البث */
+  recordingUrl?: string | null;
   created_at: Date;
   updated_at: Date;
 }

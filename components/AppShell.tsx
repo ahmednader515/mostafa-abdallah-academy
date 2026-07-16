@@ -47,7 +47,7 @@ export function AppShell({
           platformName={platformName}
           headerLogoUrl={headerLogoUrl}
           platformSubscriptionExpiryLabel={platformSubscriptionExpiryLabel}
-          onMenuClick={() => setSidebarOpen(true)}
+          onMenuClick={() => setSidebarOpen((open) => !open)}
         />
         <main className="flex-1">{children}</main>
         {footer}

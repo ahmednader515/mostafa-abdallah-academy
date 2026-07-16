@@ -1,5 +1,7 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme inline {
   --font-sans: var(--font-cairo), "Cairo", system-ui, sans-serif;
   --font-display: var(--font-cairo), "Cairo", system-ui, sans-serif;
@@ -11,14 +13,15 @@
 html.light {
   --color-navy: #0f172a;
   --color-sections: #f8fafc;
-  --color-background: #f8fafc;
+  --color-background: #ffffff;
   --color-foreground: #1e293b;
   --color-surface: #ffffff;
   --color-border: #e2e8f0;
   --color-primary: var(--platform-primary, #2563eb);
   --color-primary-hover: color-mix(in srgb, var(--color-primary) 85%, #000);
   --color-primary-light: #dbeafe;
-  --color-accent: #f59e0b;
+  --color-secondary: var(--platform-secondary, #2563eb);
+  --color-accent: var(--platform-accent, #f59e0b);
   --color-accent-hover: color-mix(in srgb, var(--color-accent) 88%, #000);
   --color-muted: #64748b;
   --color-success: #16a34a;
@@ -41,7 +44,8 @@ html.dark {
   --color-primary: var(--platform-primary, #3b82f6);
   --color-primary-hover: color-mix(in srgb, var(--color-primary) 82%, #fff);
   --color-primary-light: #1e3a8a;
-  --color-accent: #f59e0b;
+  --color-secondary: var(--platform-secondary, #3b82f6);
+  --color-accent: var(--platform-accent, #f59e0b);
   --color-accent-hover: color-mix(in srgb, var(--color-accent) 88%, #fff);
   --color-muted: #94a3b8;
   --color-success: #22c55e;
@@ -57,14 +61,15 @@ html.dark {
 html:not(.light):not(.dark) {
   --color-navy: #0f172a;
   --color-sections: #f8fafc;
-  --color-background: #f8fafc;
+  --color-background: #ffffff;
   --color-foreground: #1e293b;
   --color-surface: #ffffff;
   --color-border: #e2e8f0;
   --color-primary: var(--platform-primary, #2563eb);
   --color-primary-hover: color-mix(in srgb, var(--color-primary) 85%, #000);
   --color-primary-light: #dbeafe;
-  --color-accent: #f59e0b;
+  --color-secondary: var(--platform-secondary, #2563eb);
+  --color-accent: var(--platform-accent, #f59e0b);
   --color-accent-hover: color-mix(in srgb, var(--color-accent) 88%, #000);
   --color-muted: #64748b;
   --color-success: #16a34a;
@@ -102,6 +107,81 @@ html:not(.light):not(.dark) main {
   background: transparent;
 }
 
+/* Auth pages (login / register / forgot) */
+.auth-page-bg {
+  background:
+    radial-gradient(ellipse 80% 60% at 10% 20%, rgb(37 99 235 / 0.12), transparent 55%),
+    radial-gradient(ellipse 70% 50% at 90% 80%, rgb(245 158 11 / 0.1), transparent 50%),
+    linear-gradient(160deg, #e8eef8 0%, #f8fafc 45%, #eef2f7 100%);
+}
+
+.auth-page-orb {
+  filter: blur(40px);
+  opacity: 0.55;
+  animation: auth-orb-float 12s ease-in-out infinite;
+}
+
+.auth-page-orb-a {
+  background: rgb(37 99 235 / 0.28);
+}
+
+.auth-page-orb-b {
+  background: rgb(245 158 11 / 0.22);
+  animation-delay: -4s;
+}
+
+@keyframes auth-orb-float {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(12px, -18px) scale(1.06);
+  }
+}
+
+.auth-card {
+  animation: auth-card-in 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes auth-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.auth-brand {
+  background:
+    linear-gradient(155deg, #0f172a 0%, #1e3a8a 52%, #0f172a 100%);
+  min-height: 14rem;
+}
+
+.auth-brand-glow {
+  background:
+    radial-gradient(circle at 30% 20%, rgb(245 158 11 / 0.22), transparent 42%),
+    radial-gradient(circle at 80% 80%, rgb(37 99 235 / 0.35), transparent 48%);
+}
+
+.auth-brand-title {
+  animation: auth-brand-title-in 0.7s ease 0.15s both;
+}
+
+@keyframes auth-brand-title-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 /* App shell layout */
 .app-shell {
   display: flex;
@@ -118,29 +198,145 @@ html:not(.light):not(.dark) main {
 }
 
 .app-sidebar {
+  box-sizing: border-box;
   background: var(--color-navy);
   color: #fff;
 }
 
-/* Desktop: fixed full-height rail — always in the viewport while page scrolls */
-@media (min-width: 1024px) {
+/* Mobile / tablet: full-screen menu over page content */
+@media (max-width: 1023px) {
   .app-sidebar {
-    position: fixed !important;
-    top: 0 !important;
-    bottom: 0 !important;
-    inset-inline-start: 0 !important;
-    inset-inline-end: auto !important;
-    height: 100vh !important;
-    min-height: 100vh !important;
-    max-height: 100vh !important;
-    width: 4.75rem !important;
-    transform: none !important;
-    overflow-y: auto;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
     z-index: 50;
+    width: 100%;
+    max-width: 100%;
+    height: 100dvh;
+    max-height: 100dvh;
+    overflow-x: hidden;
+    overflow-y: auto;
+    border: none;
+    transition: transform 0.2s ease, visibility 0.2s;
+    transform: translateX(-100%);
+  }
+
+  html[dir="rtl"] .app-sidebar {
+    transform: translateX(100%);
+  }
+
+  .app-sidebar:not([data-open="true"]) {
+    visibility: hidden;
+    pointer-events: none;
+    transition: transform 0.2s ease, visibility 0s linear 0.2s;
+  }
+
+  .app-sidebar[data-open="true"] {
+    transform: translateX(0) !important;
+    visibility: visible;
+    pointer-events: auto;
+  }
+
+  .app-sidebar-nav {
+    padding-inline: 0.75rem;
+  }
+
+  .app-sidebar-link {
+    width: 100%;
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: 0.75rem;
+    text-align: start;
+  }
+
+  .app-sidebar-label {
+    display: inline;
+    font-size: 0.9375rem;
+    line-height: 1.3;
+    white-space: normal;
+    overflow: visible;
+  }
+
+  .app-sidebar-social {
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: flex-start;
   }
 
   .app-shell-main {
-    margin-inline-start: 4.75rem;
+    margin-left: 0;
+    margin-right: 0;
+  }
+}
+
+/* Desktop: fixed icon rail, fully inside the viewport */
+@media (min-width: 1024px) {
+  .app-sidebar {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    z-index: 50;
+    width: 5rem;
+    height: 100vh;
+    max-height: 100vh;
+    overflow-x: hidden;
+    overflow-y: auto;
+    transform: none !important;
+    border-inline-end: 1px solid rgb(255 255 255 / 0.08);
+  }
+
+  html[dir="ltr"] .app-sidebar {
+    left: 0;
+    right: auto;
+  }
+
+  html[dir="rtl"] .app-sidebar {
+    right: 0;
+    left: auto;
+  }
+
+  .app-sidebar-nav {
+    align-items: stretch;
+    padding-inline: 0.35rem;
+  }
+
+  .app-sidebar-link {
+    width: 100%;
+    max-width: 100%;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.2rem;
+    padding-inline: 0.25rem;
+    text-align: center;
+  }
+
+  .app-sidebar-label {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    font-size: 0.625rem;
+    line-height: 1.15;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .app-sidebar-social {
+    flex-direction: column;
+    align-items: center;
+  }
+
+  html[dir="ltr"] .app-shell-main {
+    margin-left: 5rem;
+    margin-right: 0;
+  }
+
+  html[dir="rtl"] .app-shell-main {
+    margin-right: 5rem;
+    margin-left: 0;
   }
 }
 
@@ -575,5 +771,23 @@ html:not(.light):not(.dark) .home-teachers-hero-blend {
   to {
     visibility: hidden;
     opacity: 0;
+  }
+}
+
+/* طباعة الشهادات: إخفاء واجهة المنصة (القائمة الجانبية/الشريط العلوي/الفوتر) وإظهار الشهادة فقط */
+@media print {
+  .app-sidebar,
+  .app-topbar,
+  footer,
+  .certificate-print-hide {
+    display: none !important;
+  }
+  .app-shell-main {
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+  .certificate-print-area {
+    padding: 0 !important;
+    margin: 0 !important;
   }
 }

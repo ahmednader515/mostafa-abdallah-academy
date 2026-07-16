@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { getCourseWithContent, getEnrollment, hasFullCourseAccessAsStudent } from "@/lib/db";
+import { getCourseWithContent, getEnrollment, hasFullCourseAccessAsStudent, getCourseProgressForUser } from "@/lib/db";
 import { CourseOutlineSidebar } from "@/components/CourseOutlineSidebar";
 import { QuizPageClient } from "./QuizPageClient";
 
@@ -76,11 +76,26 @@ export default async function QuizPage({ params }: Props) {
   const prevItem = currentIndex > 0 ? items[currentIndex - 1] : null;
   const nextItem = currentIndex >= 0 && currentIndex < items.length - 1 ? items[currentIndex + 1] : null;
 
+  let completedLessonIds: string[] = [];
+  let passedQuizIds: string[] = [];
+  let progressPercent = 0;
+  if (session?.user?.id) {
+    const progress = await getCourseProgressForUser(
+      session.user.id,
+      course.id,
+      lessons.map((l) => ({ id: String(l.id) })),
+      quizzes.map((q) => ({ id: String(q.id) })),
+    );
+    completedLessonIds = progress.completedLessonIds;
+    passedQuizIds = progress.passedQuizIds;
+    progressPercent = progress.percent;
+  }
+
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
       <div className="grid gap-6 lg:grid-cols-[1fr_200px]">
         <article className="min-w-0 lg:col-start-1 lg:row-start-1">
-          <QuizPageClient quizId={quizId} />
+          <QuizPageClient quizId={quizId} courseSlug={courseSeg(course)} />
 
           {/* أزرار السابق والتالي أسفل الاختبار */}
           <nav className="mx-auto mt-8 flex w-full max-w-3xl items-center justify-between gap-4 border-t border-[var(--color-border)] px-4 pt-6 sm:px-6">
@@ -112,6 +127,9 @@ export default async function QuizPage({ params }: Props) {
             quizzes={quizzes as Array<Record<string, unknown> & { id: string; title?: string; _count?: { questions?: number } }>}
             currentLessonId={null}
             currentQuizId={quizId}
+            completedLessonIds={completedLessonIds}
+            passedQuizIds={passedQuizIds}
+            progressPercent={progressPercent}
           />
         </aside>
       </div>

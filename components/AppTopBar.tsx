@@ -9,6 +9,7 @@ import { AcademyLogo } from "@/components/AcademyLogo";
 import { LanguageToggle } from "@/components/LanguageToggle";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { useT } from "@/components/LocaleProvider";
+import { NotificationsBell } from "@/components/NotificationsBell";
 
 const BRAND_NAME = "Mostafa Abdullah academy";
 
@@ -39,16 +40,16 @@ function TopBarUser() {
 
   if (!session?.user) {
     return (
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1.5 sm:gap-2">
         <Link
           href="/login"
-          className="rounded-lg border border-white/15 px-3 py-1.5 text-xs font-medium text-white/90 transition hover:bg-white/10"
+          className="rounded-lg border border-white/15 px-2.5 py-1.5 text-[11px] font-medium text-white/90 transition hover:bg-white/10 sm:px-3 sm:text-xs"
         >
           {t("header.login", "Log in")}
         </Link>
         <Link
           href="/register"
-          className="rounded-lg bg-[#2563EB] px-3 py-1.5 text-xs font-medium text-white transition hover:bg-[#1d4ed8]"
+          className="rounded-lg bg-[#2563EB] px-2.5 py-1.5 text-[11px] font-medium text-white transition hover:bg-[#1d4ed8] sm:px-3 sm:text-xs"
         >
           {t("header.register", "Create account")}
         </Link>
@@ -139,11 +140,11 @@ export function AppTopBar({
 
   return (
     <header className="app-topbar sticky top-0 z-30 border-b border-white/5">
-      <div className="flex items-center gap-3 px-3 py-3 sm:gap-4 sm:px-5">
+      <div className="flex items-center gap-2 px-3 py-3 sm:gap-4 sm:px-5">
         <button
           type="button"
           onClick={onMenuClick}
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-white transition hover:bg-white/10 lg:hidden"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/15 bg-white/5 text-white transition hover:bg-white/10 lg:hidden"
           aria-label={t("nav.openMenu", "Open menu")}
         >
           <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
@@ -151,18 +152,18 @@ export function AppTopBar({
           </svg>
         </button>
 
-        <Link href="/" className="flex min-w-0 shrink items-center gap-2.5">
+        <Link href="/" className="flex min-w-0 shrink items-center gap-2">
           {headerLogoUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={headerLogoUrl}
               alt=""
-              className="h-10 w-10 shrink-0 rounded-full border border-[#F59E0B]/40 object-cover"
+              className="h-9 w-9 shrink-0 rounded-full border border-[#F59E0B]/40 object-cover sm:h-10 sm:w-10"
             />
           ) : (
-            <AcademyLogo className="h-10 w-10 shrink-0" title={displayName} />
+            <AcademyLogo className="h-9 w-9 shrink-0 sm:h-10 sm:w-10" title={displayName} />
           )}
-          <span className="hidden min-w-0 truncate text-sm font-semibold tracking-tight text-white sm:block md:text-base">
+          <span className="min-w-0 truncate text-xs font-semibold tracking-tight text-white sm:text-sm md:text-base">
             <span className="text-white">Mostafa Abdullah</span>{" "}
             <span className="text-[#F59E0B]">academy</span>
           </span>
@@ -186,9 +187,11 @@ export function AppTopBar({
           </label>
         </form>
 
-        <div className="ms-auto flex shrink-0 items-center gap-1.5 sm:gap-2">
-          <LanguageToggle />
-          <ThemeToggle />
+        <div className="ms-auto flex shrink-0 items-center gap-1 sm:gap-2">
+          <span className="hidden sm:contents">
+            <LanguageToggle />
+            <ThemeToggle />
+          </span>
           <Link
             href={status === "authenticated" ? "/dashboard/messages" : "/login"}
             className="relative flex h-9 w-9 items-center justify-center rounded-xl text-slate-300 transition hover:bg-white/10 hover:text-white"
@@ -199,32 +202,34 @@ export function AppTopBar({
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="m4 7 8 6 8-6" />
             </svg>
           </Link>
-          <button
-            type="button"
-            className="relative flex h-9 w-9 items-center justify-center rounded-xl text-slate-300 transition hover:bg-white/10 hover:text-white"
-            aria-label={t("nav.notifications", "Notifications")}
-          >
-            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M6 9a6 6 0 1 1 12 0c0 4 1.5 5.5 1.5 5.5H4.5S6 13 6 9z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M10 18.5a2 2 0 0 0 4 0" />
-            </svg>
-            <span className="absolute end-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#2563EB] px-1 text-[10px] font-bold text-white">
-              3
-            </span>
-          </button>
+          <NotificationsBell />
           <TopBarUser />
         </div>
       </div>
 
-      <form onSubmit={onSearch} className="border-t border-white/5 px-3 pb-3 md:hidden">
-        <input
-          type="search"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder={t("nav.searchPlaceholder", "ابحث عن كورس أو موضوع")}
-          className="w-full rounded-full border border-white/10 bg-[#1e293b] py-2.5 px-4 text-sm text-white placeholder:text-slate-400 focus:border-[#2563EB] focus:outline-none"
-        />
-      </form>
+      <div className="flex items-center gap-2 border-t border-white/5 px-3 py-2 md:hidden">
+        <form onSubmit={onSearch} className="min-w-0 flex-1">
+          <label className="relative block">
+            <span className="sr-only">{t("nav.search", "Search")}</span>
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={t("nav.searchPlaceholder", "ابحث عن كورس أو موضوع")}
+              className="w-full rounded-full border border-white/10 bg-[#1e293b] py-2 pe-3 ps-9 text-sm text-white placeholder:text-slate-400 focus:border-[#2563EB] focus:outline-none"
+            />
+            <span className="pointer-events-none absolute inset-y-0 start-0 flex items-center ps-3 text-slate-400">
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="m21 21-4.3-4.3M11 18a7 7 0 1 1 0-14 7 7 0 0 1 0 14z" />
+              </svg>
+            </span>
+          </label>
+        </form>
+        <span className="flex shrink-0 items-center gap-1 sm:hidden">
+          <LanguageToggle />
+          <ThemeToggle />
+        </span>
+      </div>
 
       {platformSubscriptionExpiryLabel ? (
         <div className="border-t border-[#2563EB]/35 bg-[#1e3a8a]/40 py-2 text-center text-xs text-blue-50 sm:text-sm">

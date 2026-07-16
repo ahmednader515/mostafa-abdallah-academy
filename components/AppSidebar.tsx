@@ -3,7 +3,9 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
+import { useEffect } from "react";
 import { useT } from "@/components/LocaleProvider";
+import { useLabel } from "@/components/LabelsProvider";
 
 export type SidebarSocialLink = {
   href: string;
@@ -164,74 +166,110 @@ export function AppSidebar({
   const t = useT();
   const settingsHref = status === "authenticated" ? "/dashboard/profile" : "/login";
 
+  /** مسميات مخصصة من إدارة "مسميات المنصة" — تُستخدم بدل الترجمة الافتراضية عند توفرها */
+  const coursesLabel = useLabel("courses", t("common.courses", "Courses"));
+  const teachersLabel = useLabel("teachers", t("nav.teachers", "Trainers"));
+  const examsLabel = useLabel("exams", t("nav.exams", "Exams"));
+  const libraryLabel = useLabel("library", t("nav.library", "Library"));
+  const certsLabel = useLabel("certificates", t("nav.certificates", "Certificates"));
+  const labelOverrideByHref: Record<string, string> = {
+    "/courses": coursesLabel,
+    "/teachers": teachersLabel,
+    "/exams": examsLabel,
+    "/library": libraryLabel,
+    "/certificates": certsLabel,
+  };
+
+  useEffect(() => {
+    onClose();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- close drawer on navigation only
+  }, [pathname]);
+
+  useEffect(() => {
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [open]);
+
   return (
     <>
       <div
-        className={`fixed inset-0 z-40 bg-black/50 transition-opacity lg:hidden ${
+        className={`fixed inset-0 z-40 bg-black/50 transition-opacity duration-200 lg:hidden ${
           open ? "opacity-100" : "pointer-events-none opacity-0"
         }`}
         onClick={onClose}
-        aria-hidden
+        aria-hidden={!open}
       />
       <aside
-        className={[
-          "app-sidebar z-50 flex w-[4.75rem] shrink-0 flex-col border-e border-white/5",
-          "fixed inset-y-0 start-0 h-dvh transition-transform duration-200",
-          open ? "translate-x-0" : "max-lg:-translate-x-full max-lg:rtl:translate-x-full",
-        ].join(" ")}
+        data-open={open ? "true" : "false"}
+        className="app-sidebar z-50 flex w-full flex-col border-white/5 lg:w-auto"
         aria-label={t("nav.sidebar", "Main navigation")}
       >
-        <nav className="flex flex-1 flex-col items-center gap-1 overflow-y-auto px-2 py-5">
+        <div className="flex items-center justify-between gap-2 border-b border-white/10 px-4 py-3 lg:hidden">
+          <span className="text-sm font-semibold text-white">{t("nav.menu", "القائمة")}</span>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-9 w-9 items-center justify-center rounded-xl text-white transition hover:bg-white/10"
+            aria-label={t("nav.closeMenu", "Close menu")}
+          >
+            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18 18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <nav className="app-sidebar-nav flex flex-1 flex-col gap-1 overflow-x-hidden overflow-y-auto px-2 py-4">
           {NAV_ITEMS.map((item) => {
             const active = isActivePath(pathname, item.href);
+            const label = labelOverrideByHref[item.href] ?? t(item.labelKey, item.labelFallback);
             return (
               <Link
                 key={item.href}
                 href={item.href}
                 onClick={onClose}
-                className={`flex w-full flex-col items-center gap-1 rounded-xl px-1.5 py-2.5 text-center transition ${
-                  active ? "bg-[#2563EB]/20" : "hover:bg-white/5"
+                title={label}
+                className={`app-sidebar-link flex items-center gap-3 rounded-xl px-3 py-2.5 transition ${
+                  active ? "bg-[#2563EB]/20 text-white" : "text-slate-300 hover:bg-white/5 hover:text-white"
                 }`}
               >
                 <span
-                  className={`flex h-9 w-9 items-center justify-center rounded-xl ${
+                  className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${
                     active ? "bg-[#2563EB]/25" : ""
                   }`}
                 >
                   <NavIcon icon={item.icon} active={active} />
                 </span>
-                <span
-                  className={`text-[10px] font-medium leading-tight ${
-                    active ? "text-white" : "text-slate-400"
-                  }`}
-                >
-                  {t(item.labelKey, item.labelFallback)}
-                </span>
+                <span className="app-sidebar-label font-medium leading-tight">{label}</span>
               </Link>
             );
           })}
         </nav>
 
-        <div className="mt-auto border-t border-white/10 px-2 py-3">
+        <div className="mt-auto shrink-0 overflow-x-hidden border-t border-white/10 px-2 py-3">
           <Link
             href={settingsHref}
             onClick={onClose}
-            className={`flex w-full flex-col items-center gap-1 rounded-xl px-1.5 py-2.5 text-center transition ${
+            title={t("nav.settings", "Settings")}
+            className={`app-sidebar-link flex items-center gap-3 rounded-xl px-3 py-2.5 transition ${
               isActivePath(pathname, "/dashboard/profile")
-                ? "bg-[#2563EB]/20"
-                : "hover:bg-white/5"
+                ? "bg-[#2563EB]/20 text-white"
+                : "text-slate-300 hover:bg-white/5 hover:text-white"
             }`}
           >
-            <span className="flex h-9 w-9 items-center justify-center rounded-xl">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl">
               <NavIcon icon="settings" active={isActivePath(pathname, "/dashboard/profile")} />
             </span>
-            <span className="text-[10px] font-medium text-slate-400">
+            <span className="app-sidebar-label font-medium">
               {t("nav.settings", "Settings")}
             </span>
           </Link>
 
           {socialLinks.length > 0 ? (
-            <div className="mt-3 flex flex-col items-center gap-2 border-t border-white/10 pt-3">
+            <div className="app-sidebar-social mt-3 flex items-center gap-2 border-t border-white/10 px-1 pt-3">
               {socialLinks.map((link) => (
                 <a
                   key={`${link.network}-${link.href}`}
@@ -240,7 +278,7 @@ export function AppSidebar({
                   rel="noopener noreferrer"
                   title={link.label}
                   aria-label={link.label}
-                  className="flex h-9 w-9 items-center justify-center rounded-full text-white shadow-sm transition hover:scale-105 hover:opacity-90"
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white shadow-sm transition hover:scale-105 hover:opacity-90"
                   style={{ backgroundColor: SOCIAL_COLORS[link.network] }}
                 >
                   <SocialIcon network={link.network} />

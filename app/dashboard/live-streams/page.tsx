@@ -76,6 +76,7 @@ CREATE INDEX IF NOT EXISTS "LiveStream_scheduled_at_idx" ON "LiveStream"(schedul
       titleAr: String(row.titleAr ?? row.title_ar ?? ""),
       provider: String(row.provider ?? ""),
       meetingUrl: String(row.meetingUrl ?? row.meeting_url ?? ""),
+      recordingUrl: String(row.recordingUrl ?? row.recording_url ?? ""),
       scheduledAt: row.scheduledAt ?? row.scheduled_at,
       course: row.course as { id: string; title: string; slug: string } | undefined,
     };

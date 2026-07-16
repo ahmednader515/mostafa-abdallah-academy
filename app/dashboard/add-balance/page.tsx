@@ -3,14 +3,14 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { authOptions } from "@/lib/auth";
 import { getHomepageSettings } from "@/lib/db";
+import { listEnabledPaymentMethods } from "@/lib/lms-spec-db";
 import { CopyButton } from "./CopyButton";
 import { getLocaleFromCookie, getServerTranslator } from "@/lib/i18n/server";
 import type { Locale } from "@/lib/i18n/types";
 
 function toWhatsAppDigits(input: string | null | undefined): string {
   if (!input) return "";
-  const digits = String(input).replace(/\D+/g, "");
-  return digits;
+  return String(input).replace(/\D+/g, "");
 }
 
 const ABS = "dashboard.addBalanceStudent";
@@ -18,8 +18,6 @@ const ABS = "dashboard.addBalanceStudent";
 type AddBalanceMsgKey =
   | "title"
   | "subtitle"
-  | "methodTitle"
-  | "transferInstruction"
   | "confirmationNote"
   | "waitingNote"
   | "whatsappButton";
@@ -27,8 +25,6 @@ type AddBalanceMsgKey =
 const ADD_BALANCE_FALLBACK_EN: Record<AddBalanceMsgKey, string> = {
   title: "Add balance",
   subtitle: "Choose a payment method then follow the instructions",
-  methodTitle: "Vodafone Cash",
-  transferInstruction: "Transfer the required amount to the following wallet number:",
   confirmationNote:
     "After transfer, send the transfer confirmation screenshot on WhatsApp to the number",
   waitingNote:
@@ -57,13 +53,13 @@ export default async function AddBalancePage() {
   const session = await getServerSession(authOptions);
   if (!session) redirect("/login");
   if (session.user.role !== "STUDENT") redirect("/dashboard");
-  const [settings, locale, t] = await Promise.all([
+  const [settings, locale, t, paymentMethods] = await Promise.all([
     getHomepageSettings(),
     getLocaleFromCookie(),
     getServerTranslator(),
+    listEnabledPaymentMethods().catch(() => []),
   ]);
 
-  const walletNumber = settings.addBalanceWalletNumber?.trim() || "01023005622";
   const whatsappNumber = toWhatsAppDigits(settings.addBalanceWhatsappNumber) || "966553612356";
   const pageTitle = resolveAddBalanceCopy(locale, settings.addBalanceTitle, settings.addBalanceTitleEn, t, "title");
   const pageSubtitle = resolveAddBalanceCopy(
@@ -72,20 +68,6 @@ export default async function AddBalancePage() {
     settings.addBalanceSubtitleEn,
     t,
     "subtitle",
-  );
-  const methodTitle = resolveAddBalanceCopy(
-    locale,
-    settings.addBalanceMethodTitle,
-    settings.addBalanceMethodTitleEn,
-    t,
-    "methodTitle",
-  );
-  const transferInstruction = resolveAddBalanceCopy(
-    locale,
-    settings.addBalanceTransferInstruction,
-    settings.addBalanceTransferInstructionEn,
-    t,
-    "transferInstruction",
   );
   const confirmationNote = resolveAddBalanceCopy(
     locale,
@@ -109,33 +91,89 @@ export default async function AddBalancePage() {
     "whatsappButton",
   );
 
+  // إن لم تُفعَّل أي وسيلة بعد، اعرض المحفظة القديمة كاحتياطي
+  const legacyWallet = settings.addBalanceWalletNumber?.trim() || "";
+  const methods =
+    paymentMethods.length > 0
+      ? paymentMethods
+      : legacyWallet
+        ? [
+            {
+              id: "legacy",
+              type: "vodafone_cash",
+              name: "Vodafone Cash",
+              nameAr: "فودافون كاش",
+              accountDetails: legacyWallet,
+              instructions:
+                settings.addBalanceTransferInstruction ??
+                "قم بتحويل المبلغ المطلوب إلى رقم المحفظة التالي:",
+              instructionsEn:
+                settings.addBalanceTransferInstructionEn ??
+                "Transfer the required amount to the following wallet number:",
+              configJson: null,
+              isEnabled: true,
+              order: 0,
+            },
+          ]
+        : [];
+
   return (
     <div className="max-w-2xl">
-      <Link
-        href="/dashboard"
-        className="text-sm font-medium text-[var(--color-primary)] hover:underline"
-      >
+      <Link href="/dashboard" className="text-sm font-medium text-[var(--color-primary)] hover:underline">
         {t("dashboard.title", "Dashboard")} ←
       </Link>
       <h2 className="mt-6 text-2xl font-bold text-[var(--color-foreground)]">{pageTitle}</h2>
       <p className="mt-1 text-[var(--color-muted)]">{pageSubtitle}</p>
 
-      <div className="mt-8 space-y-6">
+      <div className="mt-8 space-y-4">
+        {methods.length === 0 ? (
+          <p className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] p-6 text-sm text-[var(--color-muted)]">
+            {t(
+              `${ABS}.noMethods`,
+              "No payment methods are available right now. Please contact support.",
+            )}
+          </p>
+        ) : (
+          methods.map((pm) => {
+            const name = locale === "en" ? pm.name : pm.nameAr || pm.name;
+            const instructions =
+              locale === "en" ? pm.instructionsEn || pm.instructions : pm.instructions;
+            return (
+              <section
+                key={pm.id}
+                className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] p-6 shadow-[var(--shadow-card)]"
+              >
+                <h3 className="text-lg font-semibold text-[var(--color-foreground)]">{name}</h3>
+                {instructions ? (
+                  <p className="mt-2 text-sm text-[var(--color-muted)]">{instructions}</p>
+                ) : null}
+                {pm.accountDetails ? (
+                  <div className="mt-3 flex flex-wrap items-center gap-3">
+                    <span className="rounded-[var(--radius-btn)] bg-[var(--color-background)] px-4 py-2 font-mono text-lg font-semibold text-[var(--color-foreground)]">
+                      {pm.accountDetails}
+                    </span>
+                    <CopyButton
+                      text={pm.accountDetails}
+                      copyLabel={t(`${ABS}.copyWallet`, "Copy")}
+                      copiedLabel={t(`${ABS}.copiedWallet`, "Copied")}
+                      ariaLabel={t(`${ABS}.copyWalletAria`, "Copy account details")}
+                    />
+                  </div>
+                ) : (
+                  <p className="mt-3 text-sm text-amber-700 dark:text-amber-300">
+                    {t(
+                      `${ABS}.missingAccount`,
+                      "Account details will be provided by the admin soon.",
+                    )}
+                  </p>
+                )}
+              </section>
+            );
+          })
+        )}
+
         <section className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] p-6 shadow-[var(--shadow-card)]">
-          <h3 className="text-lg font-semibold text-[var(--color-foreground)]">{methodTitle}</h3>
-          <p className="mt-2 text-sm text-[var(--color-muted)]">{transferInstruction}</p>
-          <div className="mt-3 flex flex-wrap items-center gap-3">
-            <span className="rounded-[var(--radius-btn)] bg-[var(--color-background)] px-4 py-2 font-mono text-lg font-semibold text-[var(--color-foreground)]">
-              {walletNumber}
-            </span>
-            <CopyButton
-              text={walletNumber}
-              copyLabel={t("dashboard.addBalanceStudent.copyWallet", "Copy")}
-              copiedLabel={t("dashboard.addBalanceStudent.copiedWallet", "Copied")}
-              ariaLabel={t("dashboard.addBalanceStudent.copyWalletAria", "Copy wallet number")}
-            />
-          </div>
-          <div className="mt-6 rounded-[var(--radius-btn)] border border-amber-200 bg-amber-50/80 p-4 dark:border-amber-800 dark:bg-amber-900/20">
+          <div className="rounded-[var(--radius-btn)] border border-amber-200 bg-amber-50/80 p-4 dark:border-amber-800 dark:bg-amber-900/20">
             <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
               {confirmationNote}{" "}
               <a
