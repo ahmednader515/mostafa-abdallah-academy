@@ -30,6 +30,11 @@ const getCachedLabelsMap = cache(async () => {
   }
 });
 
+/** خريطة المسميات للتمرير من السيرفر إلى الواجهة */
+export async function getServerLabelsMap() {
+  return getCachedLabelsMap();
+}
+
 /** قراءة مسمى ديناميكي من لوحة التحكم مع احتياطي ثابت */
 export async function getLabel(key: string, locale: Locale = "ar"): Promise<string> {
   const map = await getCachedLabelsMap();

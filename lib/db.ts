@@ -1,4 +1,5 @@
 import "dotenv/config";
+import { unstable_cache } from "next/cache";
 import { cache } from "react";
 import { neon } from "@neondatabase/serverless";
 import type {
@@ -1962,8 +1963,14 @@ async function getHomepageSettingsUncached(): Promise<HomepageSetting> {
   }
 }
 
+const getHomepageSettingsCached = unstable_cache(
+  getHomepageSettingsUncached,
+  ["homepage-settings"],
+  { revalidate: 60, tags: ["homepage-settings"] },
+);
+
 /** نفس الطلب (layout + metadata + الصفحة) يقرأ الإعدادات مرة واحدة فقط */
-export const getHomepageSettings = cache(getHomepageSettingsUncached);
+export const getHomepageSettings = cache(getHomepageSettingsCached);
 
 function pickReviewsSectionString(
   row: Record<string, unknown>,

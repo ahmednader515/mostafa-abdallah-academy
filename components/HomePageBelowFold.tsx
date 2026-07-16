@@ -12,6 +12,16 @@ import {
   userHasActivePlatformSubscription,
   getLatestPlatformSubscriptionExpiry,
 } from "@/lib/db";
+import {
+  getCategoriesCached,
+  getHomepageLiveStreamsCached,
+  getPublishedCoursesCached,
+  getReviewsCached,
+  getStoreProductsPublicCached,
+  getSubscriptionPlansPublicCached,
+  getTeachersForHomepageCached,
+  getVisibleHomepageSectionsCached,
+} from "@/lib/cached-public-data";
 import { getVisibleHomepageSections, getHomepageLiveStreams } from "@/lib/lms-spec-db";
 import type { HomepageSetting, HomepageSection } from "@/lib/types";
 import { CourseCard } from "@/components/CourseCard";
@@ -45,7 +55,19 @@ import { HomeSocialSection } from "@/components/HomeSocialSection";
 import type { HomepageMainNavFlags } from "@/lib/homepage-hero-stats";
 import { DEFAULT_MAIN_NAV_FLAGS } from "@/lib/homepage-hero-stats";
 
-type CourseWithCategory = Awaited<ReturnType<typeof getCoursesPublished>>[number];
+type CourseWithCategory = Awaited<ReturnType<typeof getPublishedCoursesCached>>[number];
+
+async function loadStudentSubscription(
+  userId: string,
+): Promise<{ active: boolean; expiresAtIso: string | null }> {
+  try {
+    const active = await userHasActivePlatformSubscription(userId);
+    const exp = active ? await getLatestPlatformSubscriptionExpiry(userId) : null;
+    return { active, expiresAtIso: exp ? exp.toISOString() : null };
+  } catch {
+    return { active: false, expiresAtIso: null };
+  }
+}
 
 export async function HomePageBelowFold({
   homepageSettings,
@@ -56,59 +78,53 @@ export async function HomePageBelowFold({
   session: Session | null;
   mainNavFlags?: HomepageMainNavFlags | null;
 }) {
-  const [t, locale] = await Promise.all([getServerTranslator(), getLocaleFromCookie()]);
-  let courses: CourseWithCategory[] = [];
-  let categories: Awaited<ReturnType<typeof getCategories>> = [];
-  let reviews: Awaited<ReturnType<typeof getReviews>> = [];
-  let teachersForHome: Awaited<ReturnType<typeof listTeachersForHomepage>> = [];
-  let subscriptionPlansHome: Awaited<ReturnType<typeof listActiveSubscriptionPlansPublic>> = [];
-  let storeProductsHome: Awaited<ReturnType<typeof listStoreProductsPublic>> = [];
-
-  if (homepageSettings.teachersEnabled) {
-    try {
-      teachersForHome = await listTeachersForHomepage();
-    } catch {
-      /* جدول أو أعمدة غير جاهزة */
-    }
-  }
-  if (homepageSettings.subscriptionsEnabled) {
-    try {
-      subscriptionPlansHome = await listActiveSubscriptionPlansPublic();
-    } catch {
-      /* جداول الاشتراك غير جاهزة */
-    }
-  }
-  if (homepageSettings.storeEnabled) {
-    try {
-      storeProductsHome = await listStoreProductsPublic();
-    } catch {
-      /* جداول المتجر غير جاهزة */
-    }
-  }
-
-  let studentPlatformSubscription: { active: boolean; expiresAtIso: string | null } | null = null;
-  if (
+  const studentId =
     homepageSettings.subscriptionsEnabled &&
     session?.user?.role === "STUDENT" &&
     session.user.id
-  ) {
-    try {
-      const active = await userHasActivePlatformSubscription(session.user.id);
-      const exp = active ? await getLatestPlatformSubscriptionExpiry(session.user.id) : null;
-      studentPlatformSubscription = {
-        active,
-        expiresAtIso: exp ? exp.toISOString() : null,
-      };
-    } catch {
-      studentPlatformSubscription = { active: false, expiresAtIso: null };
-    }
-  }
+      ? session.user.id
+      : null;
 
-  try {
-    [courses, categories] = await Promise.all([getCoursesPublished(true), getCategories()]);
-  } catch {
-    // لا قاعدة بيانات أو غير متصلة
-  }
+  const [
+    [t, locale],
+    teachersResult,
+    subscriptionPlansResult,
+    storeProductsResult,
+    coursesCategoriesResult,
+    reviewsResult,
+    sectionsStreamsResult,
+    studentSubscriptionResult,
+  ] = await Promise.all([
+    Promise.all([getServerTranslator(), getLocaleFromCookie()]),
+    homepageSettings.teachersEnabled
+      ? getTeachersForHomepageCached().catch(() => [] as Awaited<ReturnType<typeof listTeachersForHomepage>>)
+      : Promise.resolve([] as Awaited<ReturnType<typeof listTeachersForHomepage>>),
+    homepageSettings.subscriptionsEnabled
+      ? getSubscriptionPlansPublicCached().catch(() => [] as Awaited<ReturnType<typeof listActiveSubscriptionPlansPublic>>)
+      : Promise.resolve([] as Awaited<ReturnType<typeof listActiveSubscriptionPlansPublic>>),
+    homepageSettings.storeEnabled
+      ? getStoreProductsPublicCached().catch(() => [] as Awaited<ReturnType<typeof listStoreProductsPublic>>)
+      : Promise.resolve([] as Awaited<ReturnType<typeof listStoreProductsPublic>>),
+    Promise.all([
+      getPublishedCoursesCached().catch(() => [] as Awaited<ReturnType<typeof getCoursesPublished>>),
+      getCategoriesCached().catch(() => [] as Awaited<ReturnType<typeof getCategories>>),
+    ]),
+    getReviewsCached().catch(() => [] as Awaited<ReturnType<typeof getReviews>>),
+    Promise.all([
+      getVisibleHomepageSectionsCached().catch(() => [] as Awaited<ReturnType<typeof getVisibleHomepageSections>>),
+      getHomepageLiveStreamsCached().catch(() => [] as Awaited<ReturnType<typeof getHomepageLiveStreams>>),
+    ]),
+    studentId ? loadStudentSubscription(studentId) : Promise.resolve(null),
+  ]);
+
+  let teachersForHome = teachersResult;
+  const subscriptionPlansHome = subscriptionPlansResult;
+  const storeProductsHome = storeProductsResult;
+  let [courses, categories] = coursesCategoriesResult;
+  const reviews = reviewsResult;
+  const [visibleSections, homeLiveStreamsRaw] = sectionsStreamsResult;
+  const homeLiveStreams = homeLiveStreamsRaw as HomeLiveStream[];
+  const studentPlatformSubscription = studentSubscriptionResult;
 
   if (homepageSettings.teachersEnabled && teachersForHome.length > 0) {
     const teacherAccountIds = new Set(teachersForHome.map((t) => t.id));
@@ -119,23 +135,6 @@ export async function HomePageBelowFold({
         null;
       return !creator || !teacherAccountIds.has(creator);
     });
-  }
-
-  try {
-    reviews = await getReviews();
-  } catch {
-    /* جدول التعليقات غير موجود */
-  }
-
-  let visibleSections: HomepageSection[] = [];
-  let homeLiveStreams: HomeLiveStream[] = [];
-  try {
-    [visibleSections, homeLiveStreams] = await Promise.all([
-      getVisibleHomepageSections(),
-      getHomepageLiveStreams() as Promise<HomeLiveStream[]>,
-    ]);
-  } catch {
-    /* محرك الأقسام غير جاهز بعد — نستخدم الترتيب الثابت الحالي */
   }
 
   const platformNewsSlides = parsePlatformNewsItems(homepageSettings.platformNewsItems);

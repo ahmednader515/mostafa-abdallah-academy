@@ -12,10 +12,18 @@ type LabelsContextValue = {
 
 const LabelsContext = createContext<LabelsContextValue | null>(null);
 
-export function LabelsProvider({ children }: { children: React.ReactNode }) {
-  const [labels, setLabels] = useState<LabelsMap>({});
+export function LabelsProvider({
+  children,
+  initialLabels,
+}: {
+  children: React.ReactNode;
+  /** عند التمرير من السيرفر لا نُجري طلب /api/labels إضافياً */
+  initialLabels?: LabelsMap;
+}) {
+  const [labels, setLabels] = useState<LabelsMap>(initialLabels ?? {});
 
   useEffect(() => {
+    if (initialLabels !== undefined) return;
     let cancelled = false;
     fetch("/api/labels")
       .then((res) => (res.ok ? res.json() : null))
@@ -28,7 +36,7 @@ export function LabelsProvider({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [initialLabels]);
 
   const value = useMemo<LabelsContextValue>(() => ({ labels }), [labels]);
 

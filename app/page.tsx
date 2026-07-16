@@ -1,5 +1,4 @@
 import { Suspense } from "react";
-import { unstable_noStore } from "next/cache";
 import { preload } from "react-dom";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
@@ -16,13 +15,10 @@ import {
   parseStatsRibbonJson,
 } from "@/lib/homepage-hero-stats";
 
-/** عدم تخزين الصفحة مؤقتاً — الكورسات الجديدة والمحذوفة تظهر فوراً */
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
+/** إعادة توليد الصفحة كل دقيقة لتحسين سرعة التحميل الأولي */
+export const revalidate = 60;
 
 export default async function HomePage() {
-  unstable_noStore();
-
   const [session, homepageSettings] = await Promise.all([
     getServerSession(authOptions),
     getHomepageSettings(),

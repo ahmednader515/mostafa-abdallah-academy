@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
+import Script from "next/script";
 import NextTopLoader from "nextjs-toploader";
 import { getServerSession } from "next-auth";
 import "./globals.css";
@@ -18,7 +19,7 @@ import {
   getLatestPlatformSubscriptionExpiry,
 } from "@/lib/db";
 import { normalizeHeroHex } from "@/lib/hero-bg";
-import { getBrandAndAnalyticsSettings } from "@/lib/lms-spec-db";
+import { getBrandAndAnalyticsSettingsCached, getPlatformLabelsMapCached } from "@/lib/cached-public-data";
 import { getDir, makeTranslator } from "@/lib/i18n/core";
 import { getLocaleFromCookie } from "@/lib/i18n/server";
 import { LocaleProvider } from "@/components/LocaleProvider";
@@ -35,17 +36,14 @@ import {
 
 const cairo = localFont({
   src: [
-    { path: "../public/fonts/static/Cairo-ExtraLight.ttf", weight: "200", style: "normal" },
-    { path: "../public/fonts/static/Cairo-Light.ttf", weight: "300", style: "normal" },
     { path: "../public/fonts/static/Cairo-Regular.ttf", weight: "400", style: "normal" },
-    { path: "../public/fonts/static/Cairo-Medium.ttf", weight: "500", style: "normal" },
     { path: "../public/fonts/static/Cairo-SemiBold.ttf", weight: "600", style: "normal" },
     { path: "../public/fonts/static/Cairo-Bold.ttf", weight: "700", style: "normal" },
     { path: "../public/fonts/static/Cairo-ExtraBold.ttf", weight: "800", style: "normal" },
-    { path: "../public/fonts/static/Cairo-Black.ttf", weight: "900", style: "normal" },
   ],
   variable: "--font-cairo",
   display: "swap",
+  preload: true,
 });
 
 const BRAND_NAME_EN = "Mostafa Abdullah academy";
@@ -74,8 +72,13 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const locale = await getLocaleFromCookie();
-  const session = await getServerSession(authOptions);
+  const [locale, session, homepageSettingsResult, brand, platformLabels] = await Promise.all([
+    getLocaleFromCookie(),
+    getServerSession(authOptions),
+    getHomepageSettings().catch(() => null),
+    getBrandAndAnalyticsSettingsCached().catch(() => null),
+    getPlatformLabelsMapCached(),
+  ]);
   const dir = getDir(locale);
   const t = makeTranslator(locale);
   let platformName: string | null = HOMEPAGE_DEFAULT_PLATFORM_NAME_AR;
@@ -85,8 +88,8 @@ export default async function RootLayout({
   let footerTagline = t("footer.defaultTagline", HOMEPAGE_DEFAULT_FOOTER_TAGLINE_AR);
   let footerCopyright = t("footer.defaultCopyright", HOMEPAGE_DEFAULT_FOOTER_COPYRIGHT_AR);
   const socialLinks: SidebarSocialLink[] = [];
-  try {
-    const settings = await getHomepageSettings();
+  if (homepageSettingsResult) {
+    const settings = homepageSettingsResult;
     platformName =
       pickLocalizedText(locale, settings.platformName, settings.platformNameEn) ||
       (locale === "en" ? BRAND_NAME_EN : HOMEPAGE_DEFAULT_PLATFORM_NAME_AR);
@@ -134,13 +137,13 @@ export default async function RootLayout({
       t,
       "Mostafa Abdullah academy. All rights reserved.",
     );
-  } catch {
+  } else {
     platformName = locale === "en" ? BRAND_NAME_EN : HOMEPAGE_DEFAULT_PLATFORM_NAME_AR;
   }
 
   let platformSubscriptionExpiryLabel: string | null = null;
-  try {
-    if (session?.user?.role === "STUDENT" && session.user.id) {
+  if (session?.user?.role === "STUDENT" && session.user.id) {
+    try {
       const active = await userHasActivePlatformSubscription(session.user.id);
       if (active) {
         const exp = await getLatestPlatformSubscriptionExpiry(session.user.id);
@@ -157,9 +160,9 @@ export default async function RootLayout({
           platformSubscriptionExpiryLabel = t("header.active", "نشط");
         }
       }
+    } catch {
+      platformSubscriptionExpiryLabel = null;
     }
-  } catch {
-    platformSubscriptionExpiryLabel = null;
   }
 
   let brandSecondaryColor: string | null = null;
@@ -169,8 +172,7 @@ export default async function RootLayout({
   let ga4Id: string | null = null;
   let gtmId: string | null = null;
   let facebookPixelId: string | null = null;
-  try {
-    const brand = await getBrandAndAnalyticsSettings();
+  if (brand) {
     brandSecondaryColor = normalizeHeroHex(String(brand.secondaryColor ?? "")) ?? null;
     brandAccentColor = normalizeHeroHex(String(brand.accentColor ?? "")) ?? null;
     brandBackgroundColor = normalizeHeroHex(String(brand.backgroundColor ?? "")) ?? null;
@@ -178,8 +180,6 @@ export default async function RootLayout({
     ga4Id = brand.ga4Id?.trim() || null;
     gtmId = brand.gtmId?.trim() || null;
     facebookPixelId = brand.facebookPixelId?.trim() || null;
-  } catch {
-    /* الجدول قد لا يكون جاهزاً بعد */
   }
 
   const rootCssVars = [
@@ -205,41 +205,38 @@ export default async function RootLayout({
           />
         ) : null}
         {brandFaviconUrl ? <link rel="icon" href={brandFaviconUrl} /> : null}
-        {gtmId ? (
-          <script
-            dangerouslySetInnerHTML={{
-              __html: `(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src='https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);})(window,document,'script','dataLayer','${gtmId}');`,
-            }}
-          />
-        ) : null}
-        {ga4Id ? (
-          <>
-            <script async src={`https://www.googletagmanager.com/gtag/js?id=${ga4Id}`} />
-            <script
-              dangerouslySetInnerHTML={{
-                __html: `window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js', new Date());gtag('config', '${ga4Id}');`,
-              }}
-            />
-          </>
-        ) : null}
-        {facebookPixelId ? (
-          <script
-            dangerouslySetInnerHTML={{
-              __html: `!function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window, document,'script','https://connect.facebook.net/en_US/fbevents.js');fbq('init', '${facebookPixelId}');fbq('track', 'PageView');`,
-            }}
-          />
-        ) : null}
       </head>
       <body className={`${cairo.variable} ${cairo.className} font-sans antialiased min-h-screen`}>
         {gtmId ? (
-          <noscript>
-            <iframe
-              src={`https://www.googletagmanager.com/ns.html?id=${gtmId}`}
-              height="0"
-              width="0"
-              style={{ display: "none", visibility: "hidden" }}
+          <>
+            <Script id="gtm-init" strategy="lazyOnload">
+              {`(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src='https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);})(window,document,'script','dataLayer','${gtmId}');`}
+            </Script>
+            <noscript>
+              <iframe
+                src={`https://www.googletagmanager.com/ns.html?id=${gtmId}`}
+                height="0"
+                width="0"
+                style={{ display: "none", visibility: "hidden" }}
+              />
+            </noscript>
+          </>
+        ) : null}
+        {ga4Id ? (
+          <>
+            <Script
+              src={`https://www.googletagmanager.com/gtag/js?id=${ga4Id}`}
+              strategy="lazyOnload"
             />
-          </noscript>
+            <Script id="ga4-init" strategy="lazyOnload">
+              {`window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js', new Date());gtag('config', '${ga4Id}');`}
+            </Script>
+          </>
+        ) : null}
+        {facebookPixelId ? (
+          <Script id="facebook-pixel" strategy="lazyOnload">
+            {`!function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window, document,'script','https://connect.facebook.net/en_US/fbevents.js');fbq('init', '${facebookPixelId}');fbq('track', 'PageView');`}
+          </Script>
         ) : null}
         <NextTopLoader
           color={platformPrimaryColor ?? "#2563EB"}
@@ -250,7 +247,7 @@ export default async function RootLayout({
           shadow="0 0 10px rgba(37,99,235,0.4)"
         />
         <LocaleProvider locale={locale}>
-          <LabelsProvider>
+          <LabelsProvider initialLabels={platformLabels}>
             <CurrencyProvider>
               <SiteBrandProvider platformName={platformName} headerLogoUrl={headerLogoUrl}>
                 <SessionProvider>
