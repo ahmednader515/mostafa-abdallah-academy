@@ -48,8 +48,8 @@ export async function POST(_request: Request, { params }: Props) {
 
   await markLessonCompleted(session.user.id, lessonId, course.id);
 
-  const lessons = data.lessons.map((l: { id: string }) => ({ id: String(l.id) }));
-  const quizzes = (data.quizzes ?? []).map((q: { id: string }) => ({ id: String(q.id) }));
+  const lessons = data.lessons.map((l) => ({ id: String(l.id) }));
+  const quizzes = (data.quizzes ?? []).map((q) => ({ id: String(q.id) }));
   const progress = await getCourseProgressForUser(session.user.id, course.id, lessons, quizzes);
 
   return NextResponse.json({

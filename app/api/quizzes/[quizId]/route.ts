@@ -212,8 +212,8 @@ export async function POST(
         const progress = await getCourseProgressForUser(
           session.user.id,
           courseId,
-          courseData.lessons.map((l: { id: string }) => ({ id: String(l.id) })),
-          (courseData.quizzes ?? []).map((q: { id: string }) => ({ id: String(q.id) })),
+          courseData.lessons.map((l) => ({ id: String(l.id) })),
+          (courseData.quizzes ?? []).map((q) => ({ id: String(q.id) })),
         );
         courseCompleted = progress.isComplete;
       }
