@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
 import Script from "next/script";
+import { Suspense } from "react";
 import NextTopLoader from "nextjs-toploader";
-import { getServerSession } from "next-auth";
 import "./globals.css";
 import { AppShell } from "@/components/AppShell";
 import { Footer } from "@/components/Footer";
@@ -13,14 +13,14 @@ import { StoreSplashProvider } from "@/components/StoreSplashProvider";
 import { InspectGuard } from "@/components/InspectGuard";
 import { ForceLogoutGuard } from "@/components/ForceLogoutGuard";
 import { MetaPixelTracker } from "@/components/MetaPixelTracker";
-import { authOptions } from "@/lib/auth";
-import {
-  getHomepageSettings,
-  userHasActivePlatformSubscription,
-  getLatestPlatformSubscriptionExpiry,
-} from "@/lib/db";
+import { StudentSubscriptionExpiryBanner } from "@/components/StudentSubscriptionExpiryBanner";
+import { getHomepageSettings } from "@/lib/db";
 import { normalizeHeroHex } from "@/lib/hero-bg";
-import { getBrandAndAnalyticsSettingsCached, getPlatformLabelsMapCached } from "@/lib/cached-public-data";
+import {
+  getBrandAndAnalyticsSettingsCached,
+  getEnabledSocialLinksCached,
+  getPlatformLabelsMapCached,
+} from "@/lib/cached-public-data";
 import { getDir, makeTranslator } from "@/lib/i18n/core";
 import { getLocaleFromCookie } from "@/lib/i18n/server";
 import { LocaleProvider } from "@/components/LocaleProvider";
@@ -43,7 +43,6 @@ import {
   BRAND_PAGE_TITLE_EN,
   BRAND_TAGLINE_EN,
 } from "@/lib/brand";
-import { listEnabledSocialLinks } from "@/lib/lms-spec-db";
 import { parseNavTabs } from "@/lib/nav-tabs";
 
 const cairo = localFont({
@@ -110,13 +109,14 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const [locale, session, homepageSettingsResult, brand, platformLabels] = await Promise.all([
-    getLocaleFromCookie(),
-    getServerSession(authOptions),
-    getHomepageSettings().catch(() => null),
-    getBrandAndAnalyticsSettingsCached().catch(() => null),
-    getPlatformLabelsMapCached(),
-  ]);
+  const [locale, homepageSettingsResult, brand, platformLabels, enabledSocial] =
+    await Promise.all([
+      getLocaleFromCookie(),
+      getHomepageSettings().catch(() => null),
+      getBrandAndAnalyticsSettingsCached().catch(() => null),
+      getPlatformLabelsMapCached(),
+      getEnabledSocialLinksCached().catch(() => []),
+    ]);
   const dir = getDir(locale);
   const t = makeTranslator(locale);
   let platformName: string | null = HOMEPAGE_DEFAULT_PLATFORM_NAME_AR;
@@ -165,7 +165,6 @@ export default async function RootLayout({
   }
 
   try {
-    const enabledSocial = await listEnabledSocialLinks();
     const networkMap: Record<string, SidebarSocialLink["network"]> = {
       whatsapp: "whatsapp",
       facebook: "facebook",
@@ -190,7 +189,7 @@ export default async function RootLayout({
       });
     }
   } catch {
-    /* fall through to homepage URLs */
+    /* ignore */
   }
 
   if (homepageSettingsResult) {
@@ -219,30 +218,6 @@ export default async function RootLayout({
       if (seen.has(key)) continue;
       seen.add(key);
       socialLinks.push({ href, network: p.network, label: p.label });
-    }
-  }
-
-  let platformSubscriptionExpiryLabel: string | null = null;
-  if (session?.user?.role === "STUDENT" && session.user.id) {
-    try {
-      const active = await userHasActivePlatformSubscription(session.user.id);
-      if (active) {
-        const exp = await getLatestPlatformSubscriptionExpiry(session.user.id);
-        if (exp) {
-          platformSubscriptionExpiryLabel = new Intl.DateTimeFormat(locale === "ar" ? "ar-EG" : "en-US", {
-            weekday: "long",
-            year: "numeric",
-            month: "long",
-            day: "numeric",
-            hour: "2-digit",
-            minute: "2-digit",
-          }).format(exp);
-        } else {
-          platformSubscriptionExpiryLabel = t("header.active", "نشط");
-        }
-      }
-    } catch {
-      platformSubscriptionExpiryLabel = null;
     }
   }
 
@@ -331,7 +306,7 @@ export default async function RootLayout({
         ) : null}
         {facebookPixelId ? (
           <>
-            <Script id="facebook-pixel" strategy="afterInteractive">
+            <Script id="facebook-pixel" strategy="lazyOnload">
               {`!function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window, document,'script','https://connect.facebook.net/en_US/fbevents.js');
 fbq('set','autoConfig',false,'${facebookPixelId}');
 fbq('init','${facebookPixelId}');`}
@@ -375,7 +350,11 @@ fbq('init','${facebookPixelId}');`}
                     <AppShell
                       platformName={platformName}
                       headerLogoUrl={headerLogoUrl}
-                      platformSubscriptionExpiryLabel={platformSubscriptionExpiryLabel}
+                      subscriptionBanner={
+                        <Suspense fallback={null}>
+                          <StudentSubscriptionExpiryBanner locale={locale} />
+                        </Suspense>
+                      }
                       socialLinks={socialLinks}
                       navTabs={parseNavTabs(homepageSettingsResult?.navTabsJson)}
                       footer={

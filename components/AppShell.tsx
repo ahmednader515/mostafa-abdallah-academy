@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { AppSidebar, type SidebarSocialLink } from "@/components/AppSidebar";
 import { AppTopBar } from "@/components/AppTopBar";
 import type { NavTab } from "@/lib/nav-tabs";
@@ -24,14 +24,16 @@ export function AppShell({
   platformName,
   headerLogoUrl,
   platformSubscriptionExpiryLabel,
+  subscriptionBanner,
   socialLinks,
   navTabs,
 }: {
-  children: React.ReactNode;
-  footer: React.ReactNode;
+  children: ReactNode;
+  footer: ReactNode;
   platformName?: string | null;
   headerLogoUrl?: string | null;
   platformSubscriptionExpiryLabel?: string | null;
+  subscriptionBanner?: ReactNode;
   socialLinks?: SidebarSocialLink[];
   navTabs?: NavTab[] | null;
 }) {
@@ -77,6 +79,7 @@ export function AppShell({
           platformName={platformName}
           headerLogoUrl={headerLogoUrl}
           platformSubscriptionExpiryLabel={platformSubscriptionExpiryLabel}
+          subscriptionBanner={subscriptionBanner}
           onMenuClick={toggleMenu}
           menuOpen={menuOpen}
         />

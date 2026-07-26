@@ -103,11 +103,18 @@ export function AcademyHomeHero({
   }
 
   useEffect(() => {
-    const id = window.setInterval(() => {
-      setSlide((s) => (s + 1) % totalSlides);
-      setAnimKey((k) => k + 1);
-    }, 7000);
-    return () => window.clearInterval(id);
+    // Defer carousel autoplay so first paint / LCP aren't competing with timer work.
+    let intervalId: number | undefined;
+    const startId = window.setTimeout(() => {
+      intervalId = window.setInterval(() => {
+        setSlide((s) => (s + 1) % totalSlides);
+        setAnimKey((k) => k + 1);
+      }, 7000);
+    }, 4000);
+    return () => {
+      window.clearTimeout(startId);
+      if (intervalId !== undefined) window.clearInterval(intervalId);
+    };
   }, [totalSlides]);
 
   return (

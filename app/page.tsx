@@ -1,7 +1,5 @@
 import { Suspense } from "react";
 import { preload } from "react-dom";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { getHomepageSettings } from "@/lib/db";
 import { AcademyHomeHero } from "@/components/AcademyHomeHero";
 import { HomeStatsRibbon } from "@/components/HomeStatsRibbon";
@@ -15,14 +13,16 @@ import {
   parseStatsRibbonJson,
 } from "@/lib/homepage-hero-stats";
 
-/** إعادة توليد الصفحة كل دقيقة لتحسين سرعة التحميل الأولي */
+/** Cache homepage shell aggressively; below-fold has its own cached queries. */
 export const revalidate = 60;
 
+/**
+ * Above-the-fold only: settings + hero + stats.
+ * Session is intentionally NOT awaited here — layout already loads it,
+ * and the hero CTA scrolls to subscriptions without needing auth.
+ */
 export default async function HomePage() {
-  const [session, homepageSettings] = await Promise.all([
-    getServerSession(authOptions),
-    getHomepageSettings(),
-  ]);
+  const homepageSettings = await getHomepageSettings();
 
   const heroSlides = parseHeroSlidesJson(homepageSettings.heroSlidesJson);
   const statsItems = parseStatsRibbonJson(homepageSettings.statsRibbonJson);
@@ -35,26 +35,15 @@ export default async function HomePage() {
     preload("/background.webp", { as: "image", fetchPriority: "high" });
   }
 
-  const subscribeHref =
-    session?.user?.role === "STUDENT"
-      ? "/#home-subscriptions"
-      : session
-        ? "/dashboard"
-        : "/register";
-
   return (
     <div className="bg-[var(--color-sections)]">
-      <AcademyHomeHero subscribeHref={subscribeHref} slides={heroSlides} />
+      <AcademyHomeHero subscribeHref="/#home-subscriptions" slides={heroSlides} />
       <HomeStatsRibbon items={statsItems} />
 
       <div id="home-next-section" className="scroll-mt-20" />
 
       <Suspense fallback={<HomePageBelowFoldFallback />}>
-        <HomePageBelowFold
-          homepageSettings={homepageSettings}
-          session={session}
-          mainNavFlags={mainNavFlags}
-        />
+        <HomePageBelowFold homepageSettings={homepageSettings} mainNavFlags={mainNavFlags} />
       </Suspense>
     </div>
   );

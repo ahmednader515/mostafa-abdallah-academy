@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { FormEvent, useEffect, useRef, useState, type ReactNode } from "react";
 import type { UserRole } from "@/lib/types";
 import { LanguageToggle } from "@/components/LanguageToggle";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -118,12 +118,15 @@ export function AppTopBar({
   platformName,
   headerLogoUrl,
   platformSubscriptionExpiryLabel,
+  subscriptionBanner,
   onMenuClick,
   menuOpen = false,
 }: {
   platformName?: string | null;
   headerLogoUrl?: string | null;
+  /** @deprecated Prefer subscriptionBanner (streamed slot) */
   platformSubscriptionExpiryLabel?: string | null;
+  subscriptionBanner?: ReactNode;
   onMenuClick: () => void;
   menuOpen?: boolean;
 }) {
@@ -231,18 +234,19 @@ export function AppTopBar({
         </span>
       </div>
 
-      {platformSubscriptionExpiryLabel ? (
-        <div className="border-t border-[#2563EB]/35 bg-[#1e3a8a]/40 py-2 text-center text-xs text-blue-50 sm:text-sm">
-          <span className="font-semibold text-blue-200">
-            {t("header.platformSubscriptionActive", "You are subscribed to the platform subscription")}
-          </span>
-          {" — "}
-          <span>
-            {t("header.endsAt", "Expires at:")}{" "}
-            <time className="font-medium text-white">{platformSubscriptionExpiryLabel}</time>
-          </span>
-        </div>
-      ) : null}
+      {subscriptionBanner ??
+        (platformSubscriptionExpiryLabel ? (
+          <div className="border-t border-[#2563EB]/35 bg-[#1e3a8a]/40 py-2 text-center text-xs text-blue-50 sm:text-sm">
+            <span className="font-semibold text-blue-200">
+              {t("header.platformSubscriptionActive", "You are subscribed to the platform subscription")}
+            </span>
+            {" — "}
+            <span>
+              {t("header.endsAt", "Expires at:")}{" "}
+              <time className="font-medium text-white">{platformSubscriptionExpiryLabel}</time>
+            </span>
+          </div>
+        ) : null)}
     </header>
   );
 }

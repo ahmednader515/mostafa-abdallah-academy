@@ -3743,6 +3743,176 @@ export async function getCoursesPublished(
   }) as unknown as (Course & CoursePublishedExtras)[];
 }
 
+export type HomepageCourseCard = {
+  id: string;
+  title: string;
+  titleAr: string | null;
+  slug: string | null;
+  shortDesc: string | null;
+  shortDescEn: string | null;
+  duration: string | null;
+  level: string | null;
+  imageUrl: string | null;
+  price: number;
+  lessonsCount: number;
+  instructorName: string | null;
+  createdById: string | null;
+  category: { id: string; name: string; nameAr: string | null; slug: string } | null;
+};
+
+/**
+ * Slim published courses for homepage carousels — top N per category only,
+ * without rating subqueries (those are expensive on cold Neon).
+ */
+export async function getPublishedCoursesForHomepage(
+  perCategory = 8,
+): Promise<HomepageCourseCard[]> {
+  const limit = Math.max(1, Math.min(24, Math.floor(perCategory) || 8));
+  try {
+    const { ensureLmsSpecSchema } = await import("./lms-spec-db");
+    await ensureLmsSpecSchema();
+  } catch {
+    /* optional visibility column */
+  }
+  try {
+    const rows = await sql`
+      SELECT *
+      FROM (
+        SELECT
+          c.id,
+          c.title,
+          c.title_ar,
+          c.slug,
+          c.short_desc,
+          c.short_desc_en,
+          c.duration,
+          c.level,
+          c.image_url,
+          c.price,
+          c."order",
+          c.created_at,
+          c.created_by_id,
+          cat.id AS cat_id,
+          cat.name AS cat_name,
+          cat.name_ar AS cat_name_ar,
+          cat.slug AS cat_slug,
+          u.name AS instructor_name,
+          (SELECT COUNT(*)::int FROM "Lesson" l WHERE l.course_id = c.id) AS lessons_count,
+          ROW_NUMBER() OVER (
+            PARTITION BY COALESCE(c.category_id, '')
+            ORDER BY c."order" ASC, c.created_at DESC
+          ) AS rn
+        FROM "Course" c
+        LEFT JOIN "Category" cat ON c.category_id = cat.id
+        LEFT JOIN "User" u ON u.id = c.created_by_id
+        WHERE c.is_published = true AND (c.is_visible IS NULL OR c.is_visible = true)
+      ) ranked
+      WHERE rn <= ${limit}
+      ORDER BY "order" ASC, created_at DESC
+    `;
+    return (rows as Record<string, unknown>[]).map((r) => ({
+      id: String(r.id),
+      title: String(r.title ?? ""),
+      titleAr: r.title_ar != null ? String(r.title_ar) : null,
+      slug: r.slug != null ? String(r.slug) : null,
+      shortDesc: r.short_desc != null ? String(r.short_desc) : null,
+      shortDescEn: r.short_desc_en != null ? String(r.short_desc_en) : null,
+      duration: r.duration != null ? String(r.duration) : null,
+      level: r.level != null ? String(r.level) : null,
+      imageUrl: r.image_url != null ? String(r.image_url) : null,
+      price: Number(r.price ?? 0),
+      lessonsCount: Number(r.lessons_count ?? 0),
+      instructorName: r.instructor_name != null ? String(r.instructor_name) : null,
+      createdById: r.created_by_id != null ? String(r.created_by_id) : null,
+      category: r.cat_id
+        ? {
+            id: String(r.cat_id),
+            name: String(r.cat_name ?? ""),
+            nameAr: r.cat_name_ar != null ? String(r.cat_name_ar) : null,
+            slug: String(r.cat_slug ?? ""),
+          }
+        : null,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Only the homepage teacher preview (max 4) + their published courses.
+ * Avoids loading every teacher account on first paint.
+ */
+export async function listTeachersHomepagePreviewOnly(
+  max = HOME_TEACHER_PREVIEW_MAX,
+): Promise<TeacherHomepageRow[]> {
+  const limit = Math.max(1, Math.min(HOME_TEACHER_PREVIEW_MAX, Math.floor(max) || HOME_TEACHER_PREVIEW_MAX));
+  try {
+    await ensureTeacherHomepageOrderColumn().catch(() => {});
+    let rows = await sql`
+      SELECT id, name, teacher_subject, teacher_avatar_url, created_at, teacher_homepage_order
+      FROM "User"
+      WHERE role = 'TEACHER' AND teacher_homepage_order IS NOT NULL
+      ORDER BY teacher_homepage_order ASC
+      LIMIT ${limit}
+    `;
+    if ((rows as unknown[]).length === 0) {
+      rows = await sql`
+        SELECT id, name, teacher_subject, teacher_avatar_url, created_at, teacher_homepage_order
+        FROM "User"
+        WHERE role = 'TEACHER'
+        ORDER BY name ASC
+        LIMIT ${limit}
+      `;
+    }
+    const teachers = (rows as Record<string, unknown>[]).map((r) => {
+      const ho = r.teacher_homepage_order;
+      const n = typeof ho === "number" ? ho : Number(ho);
+      const homepageOrder =
+        Number.isFinite(n) && n >= 1 && n <= HOME_TEACHER_PREVIEW_MAX ? Math.floor(n) : null;
+      return {
+        id: String(r.id),
+        name: String(r.name ?? ""),
+        teacherSubject: (r.teacher_subject as string | null) ?? null,
+        teacherAvatarUrl: (r.teacher_avatar_url as string | null) ?? null,
+        createdAt:
+          r.created_at instanceof Date
+            ? r.created_at.toISOString()
+            : String((r.created_at as string) ?? new Date().toISOString()),
+        homepageOrder,
+        courses: [] as TeacherHomepageCourse[],
+      };
+    });
+    if (teachers.length === 0) return [];
+
+    const ids = teachers.map((t) => t.id);
+    const courseRows = await Promise.all(
+      ids.map((id) =>
+        sql`
+          SELECT id, slug, title, title_ar
+          FROM "Course"
+          WHERE created_by_id = ${id} AND is_published = true
+          ORDER BY "order" ASC, created_at DESC
+          LIMIT 6
+        `,
+      ),
+    );
+    return teachers.map((t, i) => {
+      const list = (courseRows[i] as Record<string, unknown>[]).map((r) => {
+        const titleAr = (r.title_ar as string | null)?.trim();
+        const title = (r.title as string | null)?.trim() || "دورة";
+        return {
+          id: String(r.id),
+          slug: String(r.slug ?? ""),
+          title: titleAr || title,
+        } satisfies TeacherHomepageCourse;
+      });
+      return { ...t, courses: list };
+    });
+  } catch {
+    return [];
+  }
+}
+
 /** يعيد خريطة معرف كورس → slug للكورسات المنشورة فقط (لروابط السلايدر في الصفحة الرئيسية). */
 export async function getPublishedCourseSlugsByIds(ids: string[]): Promise<Map<string, string>> {
   const uniq = [...new Set(ids.map((id) => String(id).trim()).filter(Boolean))];
