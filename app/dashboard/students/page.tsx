@@ -6,7 +6,9 @@ import {
   getEnrollmentsWithCourseByUserId,
   getCoursesPublished,
   backfillMissingStudentCopyrightCodes,
+  listUserPlatformSubscriptionsForAdmin,
 } from "@/lib/db";
+import { ensureUserExtraColumns } from "@/lib/dashboard-overview";
 import { getServerTranslator } from "@/lib/i18n/server";
 import { StudentsList } from "./StudentsList";
 import { StaffAccountsSection } from "./StaffAccountsSection";
@@ -23,10 +25,12 @@ export default async function StudentsPage() {
   const isAssistant = session.user.role === "ASSISTANT_ADMIN";
 
   await backfillMissingStudentCopyrightCodes().catch(() => {});
+  await ensureUserExtraColumns().catch(() => {});
 
-  const [rows, coursesList] = await Promise.all([
+  const [rows, coursesList, allSubs] = await Promise.all([
     getUsersByRole("STUDENT"),
     getCoursesPublished(true),
+    listUserPlatformSubscriptionsForAdmin().catch(() => []),
   ]);
 
   let admins: Awaited<ReturnType<typeof getUsersByRole>> = [];
@@ -38,10 +42,18 @@ export default async function StudentsPage() {
     ]);
   }
 
+  const activeSubByUser = new Map<string, string>();
+  for (const sub of allSubs) {
+    if (sub.isActive && !activeSubByUser.has(sub.userId)) {
+      activeSubByUser.set(sub.userId, sub.planName ?? "Subscription");
+    }
+  }
+
   const enrollmentsByUser = await Promise.all(rows.map((s) => getEnrollmentsWithCourseByUserId(s.id)));
 
   const students = rows.map((s, i) => {
     const row = s as unknown as Record<string, unknown>;
+    const lastLogin = row.last_login_at ?? (s as { last_login_at?: Date | string | null }).last_login_at;
     return {
     id: s.id,
     name: s.name,
@@ -51,6 +63,14 @@ export default async function StudentsPage() {
     student_number: s.student_number ?? null,
     guardian_number: s.guardian_number ?? null,
     copyright_code: (row.copyright_code as string | null | undefined) ?? (s as { copyright_code?: string | null }).copyright_code ?? null,
+    isSuspended: Boolean(row.is_suspended ?? (s as { is_suspended?: boolean }).is_suspended),
+    createdAt: s.created_at instanceof Date ? s.created_at.toISOString() : String(s.created_at ?? ""),
+    lastLoginAt: lastLogin
+      ? lastLogin instanceof Date
+        ? lastLogin.toISOString()
+        : String(lastLogin)
+      : null,
+    currentSubscription: activeSubByUser.get(s.id) ?? null,
     _count: { enrollments: enrollmentsByUser[i].length },
     enrollments: enrollmentsByUser[i].map((e) => ({
       id: e.id,
@@ -72,11 +92,19 @@ export default async function StudentsPage() {
 
   return (
     <div>
-      <h2 className="mb-6 text-xl font-bold text-[var(--color-foreground)]">
-        {isAdmin
-          ? t("dashboard.studentsPage.pageTitleAccounts", "Students & accounts")
-          : t("dashboard.studentsPage.pageTitleStudentsOnly", "Student list")}
-      </h2>
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-xl font-bold text-[var(--color-foreground)]">
+          {isAdmin
+            ? t("dashboard.studentsPage.pageTitleAccounts", "Students & accounts")
+            : t("dashboard.studentsPage.pageTitleStudentsOnly", "Student list")}
+        </h2>
+        <a
+          href="/api/dashboard/students/export"
+          className="rounded-[var(--radius-btn)] border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-2 text-sm font-semibold text-[var(--color-foreground)] hover:bg-[var(--color-primary)] hover:text-white"
+        >
+          {t("dashboard.studentsPage.exportExcel", "Export Excel (CSV)")}
+        </a>
+      </div>
       {isAdmin && (
         <StaffAccountsSection
           admins={admins.map((u) => ({ id: u.id, name: u.name, email: u.email, role: u.role }))}

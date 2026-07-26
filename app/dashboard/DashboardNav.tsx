@@ -23,10 +23,7 @@ function NavLink({
   const pathname = usePathname();
   const isActive = exact ? pathname === href : pathname === href || pathname.startsWith(href + "/");
   return (
-    <Link
-      href={href}
-      className={`${baseClass} ${isActive ? activeClass : inactiveClass}`}
-    >
+    <Link href={href} className={`${baseClass} ${isActive ? activeClass : inactiveClass}`}>
       {children}
     </Link>
   );
@@ -36,10 +33,12 @@ export function DashboardNav({
   isAdmin,
   isAssistant,
   isTeacher,
+  canViewAnalytics = false,
 }: {
   isAdmin: boolean;
   isAssistant: boolean;
   isTeacher: boolean;
+  canViewAnalytics?: boolean;
 }) {
   const t = useT();
   const isStaff = isAdmin || isAssistant;
@@ -61,113 +60,95 @@ export function DashboardNav({
   }
 
   if (!isStaff) {
-    return (
-      <>
-        <NavLink href="/dashboard/messages">
-          {t("dashboardNav.inbox", "Inbox")}
-        </NavLink>
-        <Link
-          href="/courses"
-          className={`${baseClass} ${inactiveClass}`}
-        >
-          {t("dashboardNav.availableCourses", "Available courses")}
-        </Link>
-      </>
-    );
+    return null;
   }
 
   return (
     <>
+      <NavLink href="/dashboard">
+        {t("dashboardNav.overview", "Overview")}
+      </NavLink>
+      {canViewAnalytics ? (
+        <NavLink href="/dashboard/analytics">
+          {t("dashboardNav.analytics", "Analytics")}
+        </NavLink>
+      ) : null}
       <NavLink href="/dashboard/students">
-        {isAdmin ? t("dashboardNav.studentsAccounts", "Students & accounts") : t("dashboardNav.students", "Students")}
+        {isAdmin
+          ? t("dashboardNav.studentsAccounts", "Students & accounts")
+          : t("dashboardNav.students", "Students")}
       </NavLink>
       <NavLink href="/dashboard/statistics">
         {t("dashboardNav.studentStats", "Student statistics")}
       </NavLink>
-      {(isAdmin || isAssistant) && (
-        <NavLink href="/dashboard/password-change-requests">
-          {t("dashboardNav.passwordChangeRequests", "Account change requests")}
-        </NavLink>
-      )}
-      {(isAdmin || isAssistant) && (
-        <NavLink href="/dashboard/codes">
-          {t("dashboardNav.createCodes", "Create codes")}
-        </NavLink>
-      )}
-      {(isAdmin || isAssistant) && (
-        <NavLink href="/dashboard/homework">
-          {t("dashboardNav.homework", "Student homework")}
-        </NavLink>
-      )}
-      {(isAdmin || isAssistant) && (
-        <NavLink href="/dashboard/messages">
-          {t("dashboardNav.privateStudentMessages", "Private student messages")}
-        </NavLink>
-      )}
+      <NavLink href="/dashboard/password-change-requests">
+        {t("dashboardNav.passwordChangeRequests", "Account change requests")}
+      </NavLink>
+      <NavLink href="/dashboard/codes">{t("dashboardNav.createCodes", "Create codes")}</NavLink>
+      <NavLink href="/dashboard/coupons">{t("dashboardNav.coupons", "Coupons")}</NavLink>
+      <NavLink href="/dashboard/homework">{t("dashboardNav.homework", "Student homework")}</NavLink>
+      <NavLink href="/dashboard/messages">
+        {t("dashboardNav.privateStudentMessages", "Private student messages")}
+      </NavLink>
+      <NavLink href="/dashboard/notifications">
+        {t("dashboardNav.notifications", "Broadcast notifications")}
+      </NavLink>
       {isAdmin && (
         <>
-          <NavLink href="/dashboard/courses">
-            {t("dashboardNav.manageCourses", "Manage courses")}
-          </NavLink>
+          <NavLink href="/dashboard/courses">{t("dashboardNav.manageCourses", "Manage courses")}</NavLink>
           <NavLink href="/dashboard/courses/new" exact>
             {t("dashboardNav.createCourse", "Create course")}
           </NavLink>
-          <NavLink href="/dashboard/reviews">
-            {t("dashboardNav.studentReviews", "Student reviews")}
+          <NavLink href="/dashboard/reviews">{t("dashboardNav.studentReviews", "Student reviews")}</NavLink>
+          <NavLink href="/dashboard/live-streams">{t("dashboardNav.liveStreams", "Live streams")}</NavLink>
+          <NavLink href="/dashboard/teachers">{t("dashboardNav.multipleTeachers", "Teachers")}</NavLink>
+          <NavLink href="/dashboard/subscriptions">
+            {t("dashboardNav.platformSubscriptions", "Platform subscriptions")}
           </NavLink>
-          <NavLink href="/dashboard/settings/copyright-overlay">
-            {t("dashboardNav.copyrightSettings", "Copyright code settings")}
+          <NavLink href="/dashboard/subscription-students">
+            {t("dashboardNav.subscribedStudents", "Subscribed students")}
           </NavLink>
-          <NavLink href="/dashboard/live-streams">
-            {t("dashboardNav.liveStreams", "Live streams")}
-          </NavLink>
-          <NavLink href="/dashboard/teachers">{t("dashboardNav.multipleTeachers", "Multiple teachers")}</NavLink>
-          <NavLink href="/dashboard/subscriptions">{t("dashboardNav.platformSubscriptions", "Platform subscriptions")}</NavLink>
-          <NavLink href="/dashboard/subscription-students">{t("dashboardNav.subscribedStudents", "Subscribed students")}</NavLink>
-          <NavLink href="/dashboard/library">{t("dashboardNav.platformLibrary", "Platform library")}</NavLink>
-          <NavLink href="/dashboard/jobs">{t("dashboardNav.jobs", "Jobs board")}</NavLink>
+          <NavLink href="/dashboard/library">{t("dashboardNav.platformLibrary", "Library")}</NavLink>
+          <NavLink href="/dashboard/jobs">{t("dashboardNav.jobs", "Jobs")}</NavLink>
         </>
       )}
-      {(isAdmin || isAssistant) && (
-        <NavLink href="/dashboard/settings/homepage">
-          {t("dashboardNav.homepageSettings", "Homepage settings")}
+      <NavLink href="/dashboard/consultations">{t("dashboardNav.consultations", "Consultations")}</NavLink>
+      <NavLink href="/dashboard/external-training">
+        {t("dashboardNav.externalTraining", "External training")}
+      </NavLink>
+      <NavLink href="/dashboard/forum">{t("dashboardNav.forumAdmin", "Forum")}</NavLink>
+      <NavLink href="/dashboard/settings/permissions">
+        {t("dashboardNav.permissions", "Roles & permissions")}
+      </NavLink>
+      <NavLink href="/dashboard/landing-pages">
+        {t("dashboardNav.landingPages", "Landing pages")}
+      </NavLink>
+      <NavLink href="/dashboard/settings/pages">{t("dashboardNav.pagesCms", "Pages & policies")}</NavLink>
+      <NavLink href="/dashboard/settings/student-dashboard">
+        {t("dashboardNav.studentDashboard", "Student dashboard")}
+      </NavLink>
+      <NavLink href="/dashboard/settings/search">{t("dashboardNav.searchSettings", "Search settings")}</NavLink>
+      <NavLink href="/dashboard/settings/security">{t("dashboardNav.security", "Security & logs")}</NavLink>
+      <NavLink href="/dashboard/settings/homepage">{t("dashboardNav.homepageSettings", "Homepage")}</NavLink>
+      <NavLink href="/dashboard/settings/nav-tabs">{t("dashboardNav.navTabs", "Sidebar tabs")}</NavLink>
+      <NavLink href="/dashboard/settings/homepage-sections">
+        {t("dashboardNav.homepageSections", "Homepage sections")}
+      </NavLink>
+      <NavLink href="/dashboard/settings/add-balance">
+        {t("dashboardNav.paymentMethods", "Payment methods")}
+      </NavLink>
+      <NavLink href="/dashboard/settings/labels">{t("dashboardNav.labels", "Labels")}</NavLink>
+      <NavLink href="/dashboard/categories">{t("dashboardNav.categories", "Categories")}</NavLink>
+      <NavLink href="/dashboard/settings/social-links">{t("dashboardNav.socialLinks", "Social links")}</NavLink>
+      <NavLink href="/dashboard/settings/branding">{t("dashboardNav.branding", "Branding & SEO")}</NavLink>
+      {isAdmin && (
+        <NavLink href="/dashboard/settings/copyright-overlay">
+          {t("dashboardNav.copyrightSettings", "Copyright overlay")}
         </NavLink>
       )}
-      {(isAdmin || isAssistant) && (
-        <NavLink href="/dashboard/settings/add-balance">
-          {t("dashboardNav.paymentMethods", "Student payment methods")}
-        </NavLink>
-      )}
-      {(isAdmin || isAssistant) && (
-        <NavLink href="/dashboard/settings/labels">
-          {t("dashboardNav.labels", "Labels")}
-        </NavLink>
-      )}
-      {(isAdmin || isAssistant) && (
-        <NavLink href="/dashboard/categories">
-          {t("dashboardNav.categories", "Categories")}
-        </NavLink>
-      )}
-      {(isAdmin || isAssistant) && (
-        <NavLink href="/dashboard/settings/homepage-sections">
-          {t("dashboardNav.homepageSections", "Homepage sections")}
-        </NavLink>
-      )}
-      {(isAdmin || isAssistant) && (
-        <NavLink href="/dashboard/settings/social-links">
-          {t("dashboardNav.socialLinks", "Social links")}
-        </NavLink>
-      )}
-      {(isAdmin || isAssistant) && (
-        <NavLink href="/dashboard/settings/branding">
-          {t("dashboardNav.branding", "Branding & analytics")}
-        </NavLink>
-      )}
-      {(isAdmin || isAssistant) && (
-        <NavLink href="/dashboard/settings/certificates">
-          {t("dashboardNav.certificatesDesign", "Certificates & design")}
-        </NavLink>
-      )}
+      <NavLink href="/dashboard/settings/certificates">
+        {t("dashboardNav.certificatesDesign", "Certificates")}
+      </NavLink>
     </>
   );
 }

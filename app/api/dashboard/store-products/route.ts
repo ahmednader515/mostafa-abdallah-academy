@@ -32,6 +32,8 @@ export async function POST(request: NextRequest) {
     categoryId?: string | null;
     contentType?: "file" | "article";
     articleBody?: string | null;
+    fileKind?: string | null;
+    accessMode?: string | null;
   };
   try {
     body = await request.json();
@@ -71,6 +73,8 @@ export async function POST(request: NextRequest) {
       category_id: body.categoryId ?? null,
       content_type: contentType,
       article_body: articleBody || null,
+      file_kind: body.fileKind ?? null,
+      access_mode: body.accessMode ?? "free",
     });
     return NextResponse.json({ success: true, id: out.id });
   } catch {

@@ -14,6 +14,15 @@ export type TeacherRow = {
   avatarUrl: string | null;
   phone: string | null;
   homepageOrder: number | null;
+  bio: string | null;
+  permissions: {
+    canCreateCourses: boolean;
+    canPostJobs: boolean;
+    canCreateForumTopics: boolean;
+    canModerateForum: boolean;
+    canManageLibrary: boolean;
+    canManageCoupons: boolean;
+  } | null;
 };
 
 type ApiTeacher = {
@@ -24,6 +33,8 @@ type ApiTeacher = {
   teacher_subject?: string | null;
   teacher_avatar_url?: string | null;
   teacher_homepage_order?: number | null;
+  teacher_bio?: string | null;
+  permissions?: TeacherRow["permissions"];
 };
 
 function normalizeHomepageOrder(v: unknown): number | null {
@@ -51,6 +62,8 @@ function mapApiToRows(list: ApiTeacher[]): TeacherRow[] {
     avatarUrl: t.teacher_avatar_url ?? null,
     phone: t.student_number ?? null,
     homepageOrder: normalizeHomepageOrder(t.teacher_homepage_order),
+    bio: t.teacher_bio ?? null,
+    permissions: t.permissions ?? null,
   }));
 }
 
@@ -89,6 +102,15 @@ export function TeachersAdminClient({
   const [editPassword, setEditPassword] = useState("");
   const [editSubject, setEditSubject] = useState("");
   const [editAvatarUrl, setEditAvatarUrl] = useState("");
+  const [editBio, setEditBio] = useState("");
+  const [editPerms, setEditPerms] = useState({
+    canCreateCourses: true,
+    canPostJobs: false,
+    canCreateForumTopics: true,
+    canModerateForum: false,
+    canManageLibrary: false,
+    canManageCoupons: false,
+  });
   const [editLoading, setEditLoading] = useState(false);
   const [editImageUploading, setEditImageUploading] = useState(false);
   const [editImageError, setEditImageError] = useState("");
@@ -176,6 +198,15 @@ export function TeachersAdminClient({
     setEditPassword("");
     setEditSubject(row.subject ?? "");
     setEditAvatarUrl(row.avatarUrl ?? "");
+    setEditBio(row.bio ?? "");
+    setEditPerms({
+      canCreateCourses: row.permissions?.canCreateCourses ?? true,
+      canPostJobs: row.permissions?.canPostJobs ?? false,
+      canCreateForumTopics: row.permissions?.canCreateForumTopics ?? true,
+      canModerateForum: row.permissions?.canModerateForum ?? false,
+      canManageLibrary: row.permissions?.canManageLibrary ?? false,
+      canManageCoupons: row.permissions?.canManageCoupons ?? false,
+    });
     setEditImageError("");
     setEditOpen(true);
   }
@@ -199,6 +230,8 @@ export function TeachersAdminClient({
       phone: editPhone.trim(),
       teacherSubject: editSubject.trim() || null,
       teacherAvatarUrl: editAvatarUrl.trim() || null,
+      teacherBio: editBio.trim() || null,
+      permissions: editPerms,
     };
     if (editPassword.trim()) body.password = editPassword.trim();
     const res = await fetch(`/api/dashboard/teachers/${encodeURIComponent(editingId)}`, {
@@ -656,6 +689,44 @@ export function TeachersAdminClient({
                   <p className="mt-1 text-sm text-red-600 dark:text-red-400">{editImageError}</p>
                 ) : null}
               </div>
+              <div>
+                <label className="block text-sm font-medium text-[var(--color-foreground)]">
+                  {t(`${Ta}.labelBio`, "Bio")}
+                </label>
+                <textarea
+                  value={editBio}
+                  onChange={(e) => setEditBio(e.target.value)}
+                  rows={3}
+                  maxLength={4000}
+                  className="mt-1 w-full rounded-[var(--radius-btn)] border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2 text-[var(--color-foreground)]"
+                />
+              </div>
+              <fieldset className="rounded-[var(--radius-btn)] border border-[var(--color-border)] p-3">
+                <legend className="px-1 text-sm font-medium text-[var(--color-foreground)]">
+                  {t(`${Ta}.permissionsTitle`, "Teacher permissions")}
+                </legend>
+                <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                  {(
+                    [
+                      ["canCreateCourses", "Create / edit courses"],
+                      ["canPostJobs", "Post jobs"],
+                      ["canCreateForumTopics", "Forum topics"],
+                      ["canModerateForum", "Moderate forum"],
+                      ["canManageLibrary", "Manage library"],
+                      ["canManageCoupons", "Manage coupons"],
+                    ] as const
+                  ).map(([key, label]) => (
+                    <label key={key} className="flex items-center gap-2 text-sm text-[var(--color-foreground)]">
+                      <input
+                        type="checkbox"
+                        checked={editPerms[key]}
+                        onChange={(e) => setEditPerms((p) => ({ ...p, [key]: e.target.checked }))}
+                      />
+                      {t(`${Ta}.perm.${key}`, label)}
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
               <div className="flex flex-wrap gap-2 pt-2">
                 <button
                   type="submit"

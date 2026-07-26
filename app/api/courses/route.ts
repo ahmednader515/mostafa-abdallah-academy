@@ -73,6 +73,9 @@ export async function POST(request: NextRequest) {
     accessDurationDays?: number | null;
     deliveryMode?: "recorded" | "live" | "hybrid";
     isVisible?: boolean;
+    teacherImageUrl?: string | null;
+    teacherDescription?: string | null;
+    iconsJson?: string | null;
     lessons?: LessonInput[];
     quizzes?: QuizInput[];
     contentOrder?: Array<{ type: "lesson"; index: number } | { type: "quiz"; index: number }>;
@@ -170,6 +173,21 @@ export async function POST(request: NextRequest) {
     });
   } catch (e) {
     console.error("updateCourseAccessFields error:", e);
+  }
+
+  try {
+    const { sql } = await import("@/lib/db");
+    if (body.teacherImageUrl !== undefined) {
+      await sql`UPDATE "Course" SET teacher_image_url = ${body.teacherImageUrl?.trim() || null}, updated_at = NOW() WHERE id = ${course.id}`;
+    }
+    if (body.teacherDescription !== undefined) {
+      await sql`UPDATE "Course" SET teacher_description = ${body.teacherDescription?.trim() || null}, updated_at = NOW() WHERE id = ${course.id}`;
+    }
+    if (body.iconsJson !== undefined) {
+      await sql`UPDATE "Course" SET icons_json = ${body.iconsJson}, updated_at = NOW() WHERE id = ${course.id}`;
+    }
+  } catch (e) {
+    console.error("course extras update:", e);
   }
 
   const lessons = body.lessons ?? [];

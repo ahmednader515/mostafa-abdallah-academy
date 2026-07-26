@@ -27,7 +27,7 @@ export default async function DashboardCertificatesSettingsPage() {
     score: number | null;
     issuedAt: string | Date;
   }> = [];
-  let academyName = locale === "en" ? "Mostafa Abdullah academy" : "أكاديمية مصطفى عبدالله";
+  let academyName = locale === "en" ? "WorldWay" : "WorldWay";
 
   try {
     const [designSettings, issued, homepage] = await Promise.all([

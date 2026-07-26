@@ -1,22 +1,48 @@
 import type { HomepageSetting } from "@/lib/types";
 import { getLocaleFromCookie, getServerTranslator } from "@/lib/i18n/server";
 import { pickLocalizedText } from "@/lib/i18n/localized-field";
+import { listEnabledSocialLinks } from "@/lib/lms-spec-db";
+
+type SocialNetwork =
+  | "whatsapp"
+  | "facebook"
+  | "telegram"
+  | "youtube"
+  | "linkedin"
+  | "instagram"
+  | "tiktok"
+  | "x";
 
 type SocialEntry = {
   href: string;
-  network: "whatsapp" | "facebook" | "telegram" | "youtube" | "linkedin";
+  network: SocialNetwork;
   label: string;
 };
 
-const SOCIAL_COLORS: Record<SocialEntry["network"], string> = {
+const SOCIAL_COLORS: Record<SocialNetwork, string> = {
   whatsapp: "#25D366",
   facebook: "#1877F2",
   telegram: "#229ED9",
   youtube: "#FF0000",
   linkedin: "#0A66C2",
+  instagram: "#E4405F",
+  tiktok: "#010101",
+  x: "#111111",
 };
 
-function SocialIcon({ network }: { network: SocialEntry["network"] }) {
+const NETWORK_MAP: Record<string, SocialNetwork> = {
+  whatsapp: "whatsapp",
+  facebook: "facebook",
+  telegram: "telegram",
+  youtube: "youtube",
+  linkedin: "linkedin",
+  instagram: "instagram",
+  tiktok: "tiktok",
+  x: "x",
+  twitter: "x",
+};
+
+function SocialIcon({ network }: { network: SocialNetwork }) {
   switch (network) {
     case "whatsapp":
       return (
@@ -48,13 +74,46 @@ function SocialIcon({ network }: { network: SocialEntry["network"] }) {
           <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" />
         </svg>
       );
+    case "instagram":
+      return (
+        <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 24 24" aria-hidden>
+          <path d="M12 2.2c3.2 0 3.6 0 4.9.1 1.2.1 1.9.2 2.3.4.6.2 1 .5 1.5 1 .4.4.7.9 1 1.5.2.4.4 1.1.4 2.3.1 1.3.1 1.7.1 4.9s0 3.6-.1 4.9c-.1 1.2-.2 1.9-.4 2.3-.2.6-.5 1-1 1.5-.4.4-.9.7-1.5 1-.4.2-1.1.4-2.3.4-1.3.1-1.7.1-4.9.1s-3.6 0-4.9-.1c-1.2-.1-1.9-.2-2.3-.4-.6-.2-1-.5-1.5-1-.4-.4-.7-.9-1-1.5-.2-.4-.4-1.1-.4-2.3C2.2 15.6 2.2 15.2 2.2 12s0-3.6.1-4.9c.1-1.2.2-1.9.4-2.3.2-.6.5-1 1-1.5.4-.4.9-.7 1.5-1 .4-.2 1.1-.4 2.3-.4C8.4 2.2 8.8 2.2 12 2.2m0 1.8c-3.2 0-3.5 0-4.8.1-.9 0-1.5.2-1.8.3-.4.2-.7.3-1 .7-.3.3-.5.6-.7 1-.1.3-.3.9-.3 1.8-.1 1.2-.1 1.6-.1 4.8s0 3.5.1 4.8c0 .9.2 1.5.3 1.8.2.4.3.7.7 1 .3.3.6.5 1 .7.3.1.9.3 1.8.3 1.2.1 1.6.1 4.8.1s3.5 0 4.8-.1c.9 0 1.5-.2 1.8-.3.4-.2.7-.3 1-.7.3-.3.5-.6.7-1 .1-.3.3-.9.3-1.8.1-1.2.1-1.6.1-4.8s0-3.5-.1-4.8c0-.9-.2-1.5-.3-1.8-.2-.4-.3-.7-.7-1-.3-.3-.6-.5-1-.7-.3-.1-.9-.3-1.8-.3-1.3-.1-1.6-.1-4.8-.1zm0 3.1a5 5 0 1 1 0 9.9 5 5 0 0 1 0-9.9zm0 1.8a3.2 3.2 0 1 0 0 6.3 3.2 3.2 0 0 0 0-6.3zm5.2-2.1a1.2 1.2 0 1 1 0 2.3 1.2 1.2 0 0 1 0-2.3z" />
+        </svg>
+      );
+    case "tiktok":
+      return (
+        <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 24 24" aria-hidden>
+          <path d="M19.6 7.2a6.4 6.4 0 0 1-3.8-1.2v7.1a5.4 5.4 0 1 1-4.7-5.3v2.4a3 3 0 1 0 2.2 2.9V2.5h2.5a3.9 3.9 0 0 0 3.8 3.8z" />
+        </svg>
+      );
+    case "x":
+      return (
+        <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 24 24" aria-hidden>
+          <path d="M18.2 2H21l-6.6 7.5L22 22h-6.2l-4.9-6.4L5.4 22H2.6l7-8L2 2h6.4l4.4 5.8L18.2 2zm-1.1 18h1.7L7 3.9H5.2L17.1 20z" />
+        </svg>
+      );
   }
 }
 
-function collectLinks(settings: HomepageSetting): { right: SocialEntry[]; left: SocialEntry[] } {
+function pushUnique(target: SocialEntry[], seen: Set<string>, entry: SocialEntry) {
+  const key = entry.href.trim().toLowerCase();
+  if (!key || seen.has(key)) return;
+  seen.add(key);
+  target.push(entry);
+}
+
+function collectHomepageLinks(settings: HomepageSetting): {
+  right: SocialEntry[];
+  left: SocialEntry[];
+} {
   const right: SocialEntry[] = [];
   const left: SocialEntry[] = [];
-  const pairs: Array<{ href?: string | null; network: SocialEntry["network"]; label: string; side: "right" | "left" }> = [
+  const pairs: Array<{
+    href?: string | null;
+    network: SocialNetwork;
+    label: string;
+    side: "right" | "left";
+  }> = [
     { href: settings.whatsappUrl, network: "whatsapp", label: "WhatsApp", side: "right" },
     { href: settings.facebookUrl, network: "facebook", label: "Facebook", side: "right" },
     { href: settings.telegramUrl, network: "telegram", label: "Telegram", side: "right" },
@@ -75,15 +134,67 @@ function collectLinks(settings: HomepageSetting): { right: SocialEntry[]; left: 
   return { right, left };
 }
 
+function LinkRow({ links }: { links: SocialEntry[] }) {
+  return (
+    <div className="flex flex-wrap items-center justify-center gap-3">
+      {links.map((link) => (
+        <a
+          key={`${link.network}-${link.href}`}
+          href={link.href}
+          target="_blank"
+          rel="noopener noreferrer"
+          title={link.label}
+          aria-label={link.label}
+          className="flex h-11 w-11 items-center justify-center rounded-full text-white shadow-md transition hover:scale-105 hover:opacity-90"
+          style={{ backgroundColor: SOCIAL_COLORS[link.network] }}
+        >
+          <SocialIcon network={link.network} />
+        </a>
+      ))}
+    </div>
+  );
+}
+
 export async function HomeSocialSection({ settings }: { settings: HomepageSetting }) {
   const [t, locale] = await Promise.all([getServerTranslator(), getLocaleFromCookie()]);
-  const { right, left } = collectLinks(settings);
+  const { right, left } = collectHomepageLinks(settings);
   const showLeft = settings.socialLeftEnabled !== false && left.length > 0;
-  const allLinks = [...right, ...(showLeft ? left : [])];
+
+  const adminLinks: SocialEntry[] = [];
+  try {
+    const enabled = await listEnabledSocialLinks();
+    for (const link of enabled) {
+      const network = NETWORK_MAP[String(link.network || "").toLowerCase()];
+      const href = link.url?.trim();
+      if (!network || !href) continue;
+      adminLinks.push({
+        href,
+        network,
+        label:
+          pickLocalizedText(locale, link.label, link.labelEn) ||
+          network.charAt(0).toUpperCase() + network.slice(1),
+      });
+    }
+  } catch {
+    /* ignore */
+  }
+
+  const allLinks: SocialEntry[] = [];
+  const seen = new Set<string>();
+  for (const link of adminLinks) pushUnique(allLinks, seen, link);
+  for (const link of right) pushUnique(allLinks, seen, link);
+  if (showLeft) {
+    for (const link of left) pushUnique(allLinks, seen, link);
+  }
+
   if (allLinks.length === 0) return null;
 
   const rightLabel = pickLocalizedText(locale, settings.socialRightLabel, settings.socialRightLabelEn);
   const leftLabel = pickLocalizedText(locale, settings.socialLeftLabel, settings.socialLeftLabelEn);
+
+  // Prefer one unified row of every unique link (admin + homepage).
+  // Keep optional group labels only when homepage groups exist and no admin links.
+  const useGrouped = adminLinks.length === 0 && (right.length > 0 || showLeft);
 
   return (
     <section
@@ -98,53 +209,34 @@ export async function HomeSocialSection({ settings }: { settings: HomepageSettin
           {t("home.socialSubtitle", "تواصل معنا عبر القنوات التالية")}
         </p>
 
-        {right.length > 0 ? (
-          <div className="mt-8">
-            {rightLabel ? (
-              <p className="mb-3 text-sm font-semibold text-[var(--color-foreground)]">{rightLabel}</p>
+        {useGrouped ? (
+          <>
+            {right.length > 0 ? (
+              <div className="mt-8">
+                {rightLabel ? (
+                  <p className="mb-3 text-sm font-semibold text-[var(--color-foreground)]">
+                    {rightLabel}
+                  </p>
+                ) : null}
+                <LinkRow links={right} />
+              </div>
             ) : null}
-            <div className="flex flex-wrap items-center justify-center gap-3">
-              {right.map((link) => (
-                <a
-                  key={`right-${link.network}-${link.href}`}
-                  href={link.href}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  title={link.label}
-                  aria-label={link.label}
-                  className="flex h-11 w-11 items-center justify-center rounded-full text-white shadow-md transition hover:scale-105 hover:opacity-90"
-                  style={{ backgroundColor: SOCIAL_COLORS[link.network] }}
-                >
-                  <SocialIcon network={link.network} />
-                </a>
-              ))}
-            </div>
-          </div>
-        ) : null}
-
-        {showLeft ? (
-          <div className="mt-8">
-            {leftLabel ? (
-              <p className="mb-3 text-sm font-semibold text-[var(--color-foreground)]">{leftLabel}</p>
+            {showLeft ? (
+              <div className="mt-8">
+                {leftLabel ? (
+                  <p className="mb-3 text-sm font-semibold text-[var(--color-foreground)]">
+                    {leftLabel}
+                  </p>
+                ) : null}
+                <LinkRow links={left} />
+              </div>
             ) : null}
-            <div className="flex flex-wrap items-center justify-center gap-3">
-              {left.map((link) => (
-                <a
-                  key={`left-${link.network}-${link.href}`}
-                  href={link.href}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  title={link.label}
-                  aria-label={link.label}
-                  className="flex h-11 w-11 items-center justify-center rounded-full text-white shadow-md transition hover:scale-105 hover:opacity-90"
-                  style={{ backgroundColor: SOCIAL_COLORS[link.network] }}
-                >
-                  <SocialIcon network={link.network} />
-                </a>
-              ))}
-            </div>
+          </>
+        ) : (
+          <div className="mt-8">
+            <LinkRow links={allLinks} />
           </div>
-        ) : null}
+        )}
       </div>
     </section>
   );

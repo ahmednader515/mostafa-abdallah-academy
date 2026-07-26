@@ -26,14 +26,30 @@ export async function PATCH(
     return NextResponse.json({ error: "يمكنك تعديل حسابات الطلاب فقط" }, { status: 403 });
   }
 
-  let body: { name?: string; email?: string; role?: string; password?: string; student_number?: string | null; guardian_number?: string | null };
+  let body: {
+    name?: string;
+    email?: string;
+    role?: string;
+    password?: string;
+    student_number?: string | null;
+    guardian_number?: string | null;
+    is_suspended?: boolean;
+  };
   try {
     body = await request.json();
   } catch {
     return NextResponse.json({ error: "طلب غير صالح" }, { status: 400 });
   }
 
-  const data: { name?: string; email?: string; role?: "ADMIN" | "ASSISTANT_ADMIN" | "STUDENT"; password_hash?: string; student_number?: string | null; guardian_number?: string | null } = {};
+  const data: {
+    name?: string;
+    email?: string;
+    role?: "ADMIN" | "ASSISTANT_ADMIN" | "STUDENT";
+    password_hash?: string;
+    student_number?: string | null;
+    guardian_number?: string | null;
+    is_suspended?: boolean;
+  } = {};
 
   if (body.name !== undefined && body.name.trim()) data.name = body.name.trim();
 
@@ -56,6 +72,7 @@ export async function PATCH(
 
   if (body.student_number !== undefined) data.student_number = body.student_number?.trim() || null;
   if (body.guardian_number !== undefined) data.guardian_number = body.guardian_number?.trim() || null;
+  if (typeof body.is_suspended === "boolean") data.is_suspended = body.is_suspended;
 
   if (Object.keys(data).length === 0) {
     return NextResponse.json({ error: "لا يوجد شيء للتحديث" }, { status: 400 });
@@ -63,8 +80,22 @@ export async function PATCH(
 
   await updateUser(id, data);
 
-  if (data.role !== undefined) {
+  if (data.role !== undefined || data.is_suspended === true) {
     await clearCurrentSessionId(id);
+  }
+
+  try {
+    const { recordAdminAudit } = await import("@/lib/admin-security-db");
+    await recordAdminAudit({
+      actorId: session.user.id,
+      actorEmail: session.user.email,
+      action: data.is_suspended === true ? "suspend_student" : data.is_suspended === false ? "unsuspend_student" : "update_student",
+      targetType: "user",
+      targetId: id,
+      details: JSON.stringify(Object.keys(data)),
+    });
+  } catch {
+    /* noop */
   }
 
   return NextResponse.json({ success: true });

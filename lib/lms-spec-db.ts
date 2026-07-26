@@ -283,6 +283,15 @@ export async function ensureLmsSpecSchema(): Promise<void> {
       await sql`ALTER TABLE "HomepageSetting" ADD COLUMN IF NOT EXISTS ga4_id TEXT`;
       await sql`ALTER TABLE "HomepageSetting" ADD COLUMN IF NOT EXISTS gtm_id TEXT`;
       await sql`ALTER TABLE "HomepageSetting" ADD COLUMN IF NOT EXISTS facebook_pixel_id TEXT`;
+      await sql`ALTER TABLE "HomepageSetting" ADD COLUMN IF NOT EXISTS meta_capi_access_token TEXT`;
+      await sql`ALTER TABLE "HomepageSetting" ADD COLUMN IF NOT EXISTS platform_name_color TEXT`;
+      await sql`ALTER TABLE "HomepageSetting" ADD COLUMN IF NOT EXISTS platform_name_color_2 TEXT`;
+      await sql`ALTER TABLE "HomepageSetting" ADD COLUMN IF NOT EXISTS show_platform_name BOOLEAN NOT NULL DEFAULT true`;
+      await sql`ALTER TABLE "HomepageSetting" ADD COLUMN IF NOT EXISTS show_platform_logo BOOLEAN NOT NULL DEFAULT true`;
+      await sql`ALTER TABLE "HomepageSetting" ADD COLUMN IF NOT EXISTS policy_cards_json TEXT`;
+      await sql`ALTER TABLE "HomepageSetting" ADD COLUMN IF NOT EXISTS nav_tabs_json TEXT`;
+      await sql`ALTER TABLE "HomepageSetting" ADD COLUMN IF NOT EXISTS seo_description TEXT`;
+      await sql`ALTER TABLE "HomepageSetting" ADD COLUMN IF NOT EXISTS seo_description_en TEXT`;
     } catch {
       /* noop */
     }
@@ -1040,10 +1049,11 @@ const DEFAULT_HOMEPAGE_SECTIONS: {
   { id: "hs_teachers", sectionType: "teachers", title: "اختر مدرسك", titleEn: "Choose a Teacher", icon: "users", order: 3 },
   { id: "hs_live", sectionType: "live", title: "البث المباشر", titleEn: "Live", icon: "video", order: 4 },
   { id: "hs_subscriptions", sectionType: "subscriptions", title: "الاشتراكات", titleEn: "Subscriptions", icon: "star", order: 5 },
-  { id: "hs_reviews", sectionType: "reviews", title: "آراء الطلاب", titleEn: "Reviews", icon: "chat", order: 6 },
-  { id: "hs_news", sectionType: "news", title: "أخبار المنصة", titleEn: "News", icon: "newspaper", order: 7 },
-  { id: "hs_platform_details", sectionType: "platform_details", title: "تفاصيل المنصة", titleEn: "Platform Details", icon: "info", order: 8 },
-  { id: "hs_social", sectionType: "social", title: "تابعنا", titleEn: "Follow Us", icon: "share", order: 9 },
+  { id: "hs_news", sectionType: "news", title: "أخبار المنصة", titleEn: "News", icon: "newspaper", order: 6 },
+  { id: "hs_platform_details", sectionType: "platform_details", title: "تفاصيل المنصة", titleEn: "Platform Details", icon: "info", order: 7 },
+  { id: "hs_social", sectionType: "social", title: "تابعنا", titleEn: "Follow Us", icon: "share", order: 8 },
+  { id: "hs_reviews", sectionType: "reviews", title: "آراء الطلاب", titleEn: "Reviews", icon: "chat", order: 9 },
+  { id: "hs_policies", sectionType: "policies", title: "سياسات الموقع", titleEn: "Site Policies", icon: "shield", order: 10 },
 ];
 
 async function seedDefaultHomepageSectionsIfEmpty(): Promise<void> {
@@ -1213,15 +1223,30 @@ export type BrandAndAnalyticsSettings = {
   ga4Id: string | null;
   gtmId: string | null;
   facebookPixelId: string | null;
+  /** True when a CAPI token is stored (env or DB). Never expose the raw token to the browser. */
+  metaCapiConfigured?: boolean;
 };
+
+export async function getMetaCapiAccessTokenFromDb(): Promise<string | null> {
+  await ensureLmsSpecSchema();
+  const rows = await sql`
+    SELECT meta_capi_access_token FROM "HomepageSetting" WHERE id = 'default' LIMIT 1
+  `;
+  const raw = (rows[0] as { meta_capi_access_token?: string | null } | undefined)?.meta_capi_access_token;
+  return raw?.trim() || null;
+}
 
 export async function getBrandAndAnalyticsSettings(): Promise<BrandAndAnalyticsSettings> {
   await ensureLmsSpecSchema();
   const rows = await sql`
-    SELECT secondary_color, accent_color, background_color, favicon_url, ga4_id, gtm_id, facebook_pixel_id
+    SELECT secondary_color, accent_color, background_color, favicon_url, ga4_id, gtm_id, facebook_pixel_id,
+           meta_capi_access_token
     FROM "HomepageSetting" WHERE id = 'default' LIMIT 1
   `;
   const r = (rows[0] as Record<string, unknown> | undefined) ?? {};
+  const dbToken = typeof r.meta_capi_access_token === "string" ? r.meta_capi_access_token.trim() : "";
+  const envToken =
+    process.env.META_CAPI_ACCESS_TOKEN?.trim() || process.env.FACEBOOK_CAPI_ACCESS_TOKEN?.trim() || "";
   return {
     secondaryColor: (r.secondary_color as string | null) ?? null,
     accentColor: (r.accent_color as string | null) ?? null,
@@ -1230,10 +1255,13 @@ export async function getBrandAndAnalyticsSettings(): Promise<BrandAndAnalyticsS
     ga4Id: (r.ga4_id as string | null) ?? null,
     gtmId: (r.gtm_id as string | null) ?? null,
     facebookPixelId: (r.facebook_pixel_id as string | null) ?? null,
+    metaCapiConfigured: Boolean(dbToken || envToken),
   };
 }
 
-export async function updateBrandSettings(data: Partial<BrandAndAnalyticsSettings>): Promise<void> {
+export async function updateBrandSettings(
+  data: Partial<BrandAndAnalyticsSettings> & { metaCapiAccessToken?: string | null },
+): Promise<void> {
   await ensureLmsSpecSchema();
   await sql`
     INSERT INTO "HomepageSetting" (id, updated_at)
@@ -1252,6 +1280,10 @@ export async function updateBrandSettings(data: Partial<BrandAndAnalyticsSetting
   if (data.gtmId !== undefined) await sql`UPDATE "HomepageSetting" SET gtm_id = ${data.gtmId}, updated_at = NOW() WHERE id = 'default'`;
   if (data.facebookPixelId !== undefined)
     await sql`UPDATE "HomepageSetting" SET facebook_pixel_id = ${data.facebookPixelId}, updated_at = NOW() WHERE id = 'default'`;
+  if (data.metaCapiAccessToken !== undefined) {
+    const token = data.metaCapiAccessToken?.trim() || null;
+    await sql`UPDATE "HomepageSetting" SET meta_capi_access_token = ${token}, updated_at = NOW() WHERE id = 'default'`;
+  }
 }
 
 // ============================================================

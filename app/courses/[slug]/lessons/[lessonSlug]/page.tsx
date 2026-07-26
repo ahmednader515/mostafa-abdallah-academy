@@ -221,6 +221,7 @@ export default async function LessonPage({ params }: Props) {
                 title={lessonTitle}
                 studentCopyrightCode={studentCopyrightCode}
                 copyrightOverlayStyle={copyrightOverlayStyle}
+                lessonId={String(lesson.id)}
               />
             </div>
           )}

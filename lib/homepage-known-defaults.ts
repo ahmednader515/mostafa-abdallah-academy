@@ -13,16 +13,16 @@ export const HOMEPAGE_DEFAULT_CTA_DESCRIPTION_AR =
 export const HOMEPAGE_DEFAULT_CTA_BUTTON_AR = "ابدأ رحلتك الآن";
 
 /** Footer — must match HOMEPAGE_DEFAULTS footer* in lib/db.ts */
-export const HOMEPAGE_DEFAULT_FOOTER_TITLE_AR = "Mostafa Abdullah academy";
-export const HOMEPAGE_DEFAULT_FOOTER_TAGLINE_AR = "تعلم من أفضل الخبرات في السياحة والضيافة الجوية";
-export const HOMEPAGE_DEFAULT_FOOTER_COPYRIGHT_AR = "Mostafa Abdullah academy. جميع الحقوق محفوظة.";
+export const HOMEPAGE_DEFAULT_FOOTER_TITLE_AR = "WorldWay";
+export const HOMEPAGE_DEFAULT_FOOTER_TAGLINE_AR = "تعلم بثقة وابنِ مسارك المهني";
+export const HOMEPAGE_DEFAULT_FOOTER_COPYRIGHT_AR = "WorldWay. جميع الحقوق محفوظة.";
 
 /** Hero + platform copy defaults */
-export const HOMEPAGE_DEFAULT_PLATFORM_NAME_AR = "Mostafa Abdullah academy";
-export const HOMEPAGE_DEFAULT_HERO_TITLE_AR = "السياحة والسفر والضيافة الجوية";
+export const HOMEPAGE_DEFAULT_PLATFORM_NAME_AR = "WorldWay";
+export const HOMEPAGE_DEFAULT_HERO_TITLE_AR = "منصة WorldWay التعليمية";
 export const HOMEPAGE_DEFAULT_HERO_SLOGAN_AR =
-  "تعلم من أفضل الخبرات في المجال وابدأ رحلتك الاحترافية نحو مستقبل ناجح";
-export const HOMEPAGE_DEFAULT_PAGE_TITLE_AR = "Mostafa Abdullah academy | دورات سياحة وضيافة جوية";
+  "تعلم بثقة وابنِ مسارك المهني مع كورسات ومحتوى منظم";
+export const HOMEPAGE_DEFAULT_PAGE_TITLE_AR = "WorldWay | منصة تعليمية";
 export const HOMEPAGE_DEFAULT_HERO3_TITLE_AR = "المنصة الشاملة رقم 1";
 export const HOMEPAGE_DEFAULT_HERO3_SUBTITLE_AR = "انضم لأكثر من مليون طالب مع الخطة";
 

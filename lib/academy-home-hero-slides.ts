@@ -24,7 +24,7 @@ export type AcademyHeroSlide = {
 
 export const ACADEMY_HOME_HERO_SLIDES: AcademyHeroSlide[] = [
   {
-    image: "/background.png",
+    image: "/background.webp",
     badgeAr: "أكاديمية متخصصة في",
     badgeEn: "A specialized academy in",
     titleLine1Ar: "السياحة والسفر",
@@ -43,7 +43,7 @@ export const ACADEMY_HOME_HERO_SLIDES: AcademyHeroSlide[] = [
     chipLabelEn: "Student rating",
   },
   {
-    image: "/background-2.png",
+    image: "/background-2.webp",
     badgeAr: "برنامج تدريب الطيارين",
     badgeEn: "Commercial pilot training",
     titleLine1Ar: "من القاعة إلى قمرة القيادة",

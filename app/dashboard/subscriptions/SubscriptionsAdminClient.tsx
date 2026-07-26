@@ -49,6 +49,10 @@ export function SubscriptionsAdminClient({
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [durationKind, setDurationKind] = useState<SubscriptionDurationKind>("month");
+  const [customDays, setCustomDays] = useState("30");
+  const [coversCourses, setCoversCourses] = useState(true);
+  const [coversLibrary, setCoversLibrary] = useState(true);
+  const [coversExternal, setCoversExternal] = useState(false);
   const [price, setPrice] = useState("");
   const [imageUrl, setImageUrl] = useState("");
   const [imageUploading, setImageUploading] = useState(false);
@@ -111,8 +115,12 @@ export function SubscriptionsAdminClient({
         name: name.trim(),
         description: description.trim(),
         durationKind,
+        durationValue: durationKind === "custom_days" ? Math.max(1, parseInt(customDays, 10) || 30) : 1,
         price: p,
         imageUrl: imageUrl.trim() || null,
+        coversCourses,
+        coversLibrary,
+        coversExternalTraining: coversExternal,
       }),
     });
     const data = await res.json().catch(() => ({}));
@@ -312,7 +320,34 @@ export function SubscriptionsAdminClient({
               <option value="months_6">{t(`${Su}.durationMonths6`, "6 months")}</option>
               <option value="months_9">{t(`${Su}.durationMonths9`, "9 months")}</option>
               <option value="year">{t(`${Su}.durationYear`)}</option>
+              <option value="custom_days">{t(`${Su}.durationCustomDays`, "Custom days")}</option>
             </select>
+          </div>
+          {durationKind === "custom_days" ? (
+            <div>
+              <label className="block text-sm font-medium">{t(`${Su}.customDays`, "Number of days")}</label>
+              <input
+                type="number"
+                min={1}
+                value={customDays}
+                onChange={(e) => setCustomDays(e.target.value)}
+                className="mt-1 w-full rounded-[var(--radius-btn)] border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2"
+              />
+            </div>
+          ) : null}
+          <div className="space-y-2 text-sm">
+            <label className="flex items-center gap-2">
+              <input type="checkbox" checked={coversCourses} onChange={(e) => setCoversCourses(e.target.checked)} />
+              {t(`${Su}.coversCourses`, "Covers courses")}
+            </label>
+            <label className="flex items-center gap-2">
+              <input type="checkbox" checked={coversLibrary} onChange={(e) => setCoversLibrary(e.target.checked)} />
+              {t(`${Su}.coversLibrary`, "Covers library")}
+            </label>
+            <label className="flex items-center gap-2">
+              <input type="checkbox" checked={coversExternal} onChange={(e) => setCoversExternal(e.target.checked)} />
+              {t(`${Su}.coversExternal`, "Covers external training")}
+            </label>
           </div>
           <div>
             <label className="block text-sm font-medium text-[var(--color-foreground)]">{t(`${Su}.labelPrice`)}</label>

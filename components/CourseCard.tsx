@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { FormattedPrice } from "./FormattedPrice";
+import { OptimizedImage } from "./OptimizedImage";
 import { useLocale, useT } from "./LocaleProvider";
 
 function normalizeCoursePrice(
@@ -60,12 +61,15 @@ export function CourseCard({ course }: { course: Course }) {
   return (
     <article className="flex w-[min(86vw,18rem)] shrink-0 flex-col overflow-hidden rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-[var(--shadow-card)] transition hover:border-[var(--color-primary)]/30 hover:shadow-[var(--shadow-hover)] sm:w-72">
       <Link href={href} className="group block">
-        <div className="aspect-video w-full bg-gradient-to-br from-[var(--color-primary)]/20 to-[var(--color-primary-light)]/30 flex items-center justify-center">
+        <div className="relative aspect-video w-full bg-gradient-to-br from-[var(--color-primary)]/20 to-[var(--color-primary-light)]/30 flex items-center justify-center">
           {course.imageUrl ? (
-            <img
+            <OptimizedImage
               src={course.imageUrl}
               alt=""
-              className="h-full w-full object-cover"
+              fill
+              sizes="(max-width: 640px) 86vw, 288px"
+              className="object-cover"
+              quality={70}
             />
           ) : (
             <span className="text-4xl opacity-50">📚</span>

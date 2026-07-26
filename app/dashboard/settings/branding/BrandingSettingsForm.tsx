@@ -13,9 +13,21 @@ type BrandingSettings = {
   headerLogoUrl: string | null;
   platformName: string | null;
   platformNameEn: string | null;
+  platformNameColor: string | null;
+  platformNameColor2: string | null;
+  showPlatformName: boolean;
+  showPlatformLogo: boolean;
   ga4Id: string | null;
   gtmId: string | null;
   facebookPixelId: string | null;
+  metaCapiConfigured?: boolean;
+  metaCapiAccessToken?: string | null;
+  contactEmail: string | null;
+  defaultCurrency: string | null;
+  seoTitle: string | null;
+  seoTitleEn: string | null;
+  seoDescription: string | null;
+  seoDescriptionEn: string | null;
 };
 
 function ColorField({
@@ -155,9 +167,20 @@ export function BrandingSettingsForm({ initialSettings }: { initialSettings: Bra
     headerLogoUrl: initialSettings.headerLogoUrl ?? "",
     platformName: initialSettings.platformName ?? "",
     platformNameEn: initialSettings.platformNameEn ?? "",
+    platformNameColor: initialSettings.platformNameColor ?? "#FFFFFF",
+    platformNameColor2: initialSettings.platformNameColor2 ?? "",
+    showPlatformName: initialSettings.showPlatformName !== false,
+    showPlatformLogo: initialSettings.showPlatformLogo !== false,
     ga4Id: initialSettings.ga4Id ?? "",
     gtmId: initialSettings.gtmId ?? "",
     facebookPixelId: initialSettings.facebookPixelId ?? "",
+    metaCapiAccessToken: "",
+    contactEmail: initialSettings.contactEmail ?? "",
+    defaultCurrency: initialSettings.defaultCurrency ?? "EGP",
+    seoTitle: initialSettings.seoTitle ?? "",
+    seoTitleEn: initialSettings.seoTitleEn ?? "",
+    seoDescription: initialSettings.seoDescription ?? "",
+    seoDescriptionEn: initialSettings.seoDescriptionEn ?? "",
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -186,9 +209,22 @@ export function BrandingSettingsForm({ initialSettings }: { initialSettings: Bra
           headerLogoUrl: form.headerLogoUrl.trim() || null,
           platformName: form.platformName.trim() || null,
           platformNameEn: form.platformNameEn.trim() || null,
+          platformNameColor: form.platformNameColor.trim() || null,
+          platformNameColor2: form.platformNameColor2.trim() || null,
+          showPlatformName: form.showPlatformName,
+          showPlatformLogo: form.showPlatformLogo,
           ga4Id: form.ga4Id.trim() || null,
           gtmId: form.gtmId.trim() || null,
           facebookPixelId: form.facebookPixelId.trim() || null,
+          ...(form.metaCapiAccessToken.trim()
+            ? { metaCapiAccessToken: form.metaCapiAccessToken.trim() }
+            : {}),
+          contactEmail: form.contactEmail.trim() || null,
+          defaultCurrency: form.defaultCurrency.trim() || "EGP",
+          seoTitle: form.seoTitle.trim() || null,
+          seoTitleEn: form.seoTitleEn.trim() || null,
+          seoDescription: form.seoDescription.trim() || null,
+          seoDescriptionEn: form.seoDescriptionEn.trim() || null,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -277,12 +313,121 @@ export function BrandingSettingsForm({ initialSettings }: { initialSettings: Bra
             onChange={(url) => setForm((f) => ({ ...f, headerLogoUrl: url }))}
             previewClassName="h-14 w-auto max-w-[220px] rounded-[var(--radius-btn)] border border-[var(--color-border)] bg-[var(--color-background)] object-contain p-1"
           />
+          <div className="grid gap-4 sm:grid-cols-2">
+            <ColorField
+              label={t("dashboard.brandingForm.nameColor", "Name color")}
+              value={form.platformNameColor}
+              onChange={(v) => setForm((f) => ({ ...f, platformNameColor: v }))}
+            />
+            <ColorField
+              label={t("dashboard.brandingForm.nameColor2", "Second name color (optional)")}
+              value={form.platformNameColor2 || "#F59E0B"}
+              onChange={(v) => setForm((f) => ({ ...f, platformNameColor2: v }))}
+            />
+          </div>
+          <p className="text-xs text-[var(--color-muted)]">
+            {t(
+              "dashboard.brandingForm.nameColorHint",
+              "Leave the second color empty for a single-color name. Set both for a two-tone name.",
+            )}
+          </p>
+          <button
+            type="button"
+            className="text-xs text-[var(--color-primary)] hover:underline"
+            onClick={() => setForm((f) => ({ ...f, platformNameColor2: "" }))}
+          >
+            {t("dashboard.brandingForm.clearSecondColor", "Use single color only")}
+          </button>
+          <div className="flex flex-wrap gap-6">
+            <label className="inline-flex items-center gap-2 text-sm text-[var(--color-foreground)]">
+              <input
+                type="checkbox"
+                checked={form.showPlatformLogo}
+                onChange={(e) => setForm((f) => ({ ...f, showPlatformLogo: e.target.checked }))}
+              />
+              {t("dashboard.brandingForm.showLogo", "Show logo image")}
+            </label>
+            <label className="inline-flex items-center gap-2 text-sm text-[var(--color-foreground)]">
+              <input
+                type="checkbox"
+                checked={form.showPlatformName}
+                onChange={(e) => setForm((f) => ({ ...f, showPlatformName: e.target.checked }))}
+              />
+              {t("dashboard.brandingForm.showName", "Show platform name")}
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <div className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] p-6">
+        <h3 className="mb-2 text-lg font-semibold text-[var(--color-foreground)]">
+          {t("dashboard.brandingForm.browserTitle", "Browser tab")}
+        </h3>
+        <p className="mb-4 text-sm text-[var(--color-muted)]">
+          {t(
+            "dashboard.brandingForm.browserIntro",
+            "Controls the favicon and the title/description shown in the browser tab and search results.",
+          )}
+        </p>
+        <div className="space-y-4">
           <ImageUploadField
             label={t("dashboard.brandingForm.favicon", "Favicon")}
             value={form.faviconUrl}
             onChange={(url) => setForm((f) => ({ ...f, faviconUrl: url }))}
             previewClassName="h-10 w-10 rounded border border-[var(--color-border)] bg-[var(--color-background)] object-contain p-0.5"
+            accept="image/jpeg,image/png,image/webp,image/gif,image/x-icon,image/vnd.microsoft.icon,image/svg+xml"
           />
+          <div>
+            <label className="block text-sm font-medium text-[var(--color-foreground)]">
+              {t("dashboard.brandingForm.seoTitle", "Browser title (Arabic)")}
+            </label>
+            <input
+              value={form.seoTitle}
+              onChange={(e) => setForm((f) => ({ ...f, seoTitle: e.target.value }))}
+              placeholder={t("dashboard.brandingForm.seoTitlePh", "Shown in the browser tab")}
+              className="mt-1 w-full rounded-[var(--radius-btn)] border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2 text-sm"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-[var(--color-foreground)]">
+              {t("dashboard.brandingForm.seoTitleEn", "Browser title (English)")}
+            </label>
+            <input
+              dir="ltr"
+              value={form.seoTitleEn}
+              onChange={(e) => setForm((f) => ({ ...f, seoTitleEn: e.target.value }))}
+              placeholder="Shown in the browser tab (English)"
+              className="mt-1 w-full rounded-[var(--radius-btn)] border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2 text-sm"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-[var(--color-foreground)]">
+              {t("dashboard.brandingForm.seoDescription", "Browser description (Arabic)")}
+            </label>
+            <textarea
+              value={form.seoDescription}
+              onChange={(e) => setForm((f) => ({ ...f, seoDescription: e.target.value }))}
+              rows={3}
+              placeholder={t(
+                "dashboard.brandingForm.seoDescriptionPh",
+                "Short description for search engines and link previews",
+              )}
+              className="mt-1 w-full rounded-[var(--radius-btn)] border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2 text-sm"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-[var(--color-foreground)]">
+              {t("dashboard.brandingForm.seoDescriptionEn", "Browser description (English)")}
+            </label>
+            <textarea
+              dir="ltr"
+              value={form.seoDescriptionEn}
+              onChange={(e) => setForm((f) => ({ ...f, seoDescriptionEn: e.target.value }))}
+              rows={3}
+              placeholder="Short description for search engines and link previews (English)"
+              className="mt-1 w-full rounded-[var(--radius-btn)] border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2 text-sm"
+            />
+          </div>
         </div>
       </div>
 
@@ -333,6 +478,63 @@ export function BrandingSettingsForm({ initialSettings }: { initialSettings: Bra
               className="mt-1 w-full rounded-[var(--radius-btn)] border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2 font-mono text-sm"
             />
           </div>
+          <div>
+            <label className="block text-sm font-medium text-[var(--color-foreground)]">
+              {t("dashboard.brandingForm.metaCapiAccessToken", "Meta Conversions API access token")}
+            </label>
+            <input
+              type="password"
+              dir="ltr"
+              autoComplete="new-password"
+              value={form.metaCapiAccessToken}
+              onChange={(e) => setForm((f) => ({ ...f, metaCapiAccessToken: e.target.value }))}
+              placeholder={
+                initialSettings.metaCapiConfigured
+                  ? t("dashboard.brandingForm.metaCapiTokenConfigured", "Configured — paste a new token to replace")
+                  : "EAAB..."
+              }
+              className="mt-1 w-full rounded-[var(--radius-btn)] border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2 font-mono text-sm"
+            />
+            <p className="mt-1 text-xs text-[var(--color-muted)]">
+              {t(
+                "dashboard.brandingForm.metaCapiHelp",
+                "Events are sent manually (Pixel + CAPI). Automatic Pixel event tracking is disabled. You can also set META_CAPI_ACCESS_TOKEN in the server environment.",
+              )}
+            </p>
+            {initialSettings.metaCapiConfigured ? (
+              <p className="mt-1 text-xs font-medium text-emerald-600 dark:text-emerald-400">
+                {t("dashboard.brandingForm.metaCapiReady", "Conversions API is configured.")}
+              </p>
+            ) : (
+              <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+                {t(
+                  "dashboard.brandingForm.metaCapiMissing",
+                  "Add an access token to enable server-side Conversions API.",
+                )}
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] p-6 space-y-4">
+        <h3 className="font-semibold">{t("dashboard.brandingForm.generalSeo", "General")}</h3>
+        <div>
+          <label className="block text-sm font-medium">{t("dashboard.brandingForm.contactEmail", "Contact email")}</label>
+          <input
+            type="email"
+            value={form.contactEmail}
+            onChange={(e) => setForm((f) => ({ ...f, contactEmail: e.target.value }))}
+            className="mt-1 w-full rounded-[var(--radius-btn)] border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium">{t("dashboard.brandingForm.defaultCurrency", "Default currency")}</label>
+          <input
+            value={form.defaultCurrency}
+            onChange={(e) => setForm((f) => ({ ...f, defaultCurrency: e.target.value }))}
+            className="mt-1 w-full max-w-xs rounded-[var(--radius-btn)] border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2"
+          />
         </div>
       </div>
 

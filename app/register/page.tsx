@@ -7,6 +7,7 @@ import { AuthInput, AuthPasswordInput, AuthShell } from "@/components/AuthShell"
 import { PhoneNumberInput, DEFAULT_PHONE_COUNTRY } from "@/components/PhoneNumberInput";
 import { useLocale, useT } from "@/components/LocaleProvider";
 import { validatePhoneForCountry } from "@/lib/phone/countries";
+import { newAnalyticsEventId, trackMetaEvent } from "@/lib/analytics-events";
 
 export default function RegisterPage() {
   const t = useT();
@@ -29,9 +30,13 @@ export default function RegisterPage() {
       return;
     }
     setLoading(true);
+    const eventId = newAnalyticsEventId();
     const res = await fetch("/api/auth/signup", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "x-meta-event-id": eventId,
+      },
       body: JSON.stringify({
         email,
         password,
@@ -39,6 +44,7 @@ export default function RegisterPage() {
         phone_country: phoneCountry,
         phone_national: phoneNational,
         student_number: phoneCheck.stored,
+        metaEventId: eventId,
       }),
     });
     const data = await res.json().catch(() => ({}));
@@ -47,6 +53,18 @@ export default function RegisterPage() {
       setError(data.error ?? t("auth.register.createFailed", "Failed to create account"));
       return;
     }
+    trackMetaEvent(
+      "CompleteRegistration",
+      { status: "completed", content_name: "student_signup" },
+      {
+        eventId,
+        userData: {
+          email: email.trim(),
+          phone: phoneCheck.stored,
+          firstName: name.trim().split(/\s+/)[0] || name.trim(),
+        },
+      },
+    );
     router.push(
       `/login?message=${encodeURIComponent(
         t("auth.register.signupSuccessMessage", "Account created successfully, you can now log in"),

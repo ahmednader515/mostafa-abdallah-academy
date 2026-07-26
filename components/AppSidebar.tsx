@@ -4,41 +4,38 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { useEffect } from "react";
-import { useT } from "@/components/LocaleProvider";
+import { useLocale, useT } from "@/components/LocaleProvider";
 import { useLabel } from "@/components/LabelsProvider";
+import { DEFAULT_NAV_TABS, visibleNavTabs, type NavTab } from "@/lib/nav-tabs";
+
+export type SidebarSocialNetwork =
+  | "whatsapp"
+  | "facebook"
+  | "telegram"
+  | "youtube"
+  | "linkedin"
+  | "instagram"
+  | "tiktok"
+  | "x";
 
 export type SidebarSocialLink = {
   href: string;
-  network: "whatsapp" | "facebook" | "telegram" | "youtube" | "linkedin";
+  network: SidebarSocialNetwork;
   label: string;
 };
 
-type NavItem = {
-  href: string;
-  labelKey: string;
-  labelFallback: string;
-  icon: "home" | "courses" | "teachers" | "exams" | "library" | "forum" | "certs" | "settings";
-};
-
-const NAV_ITEMS: NavItem[] = [
-  { href: "/", labelKey: "common.home", labelFallback: "Home", icon: "home" },
-  { href: "/courses", labelKey: "common.courses", labelFallback: "Courses", icon: "courses" },
-  { href: "/teachers", labelKey: "nav.teachers", labelFallback: "Trainers", icon: "teachers" },
-  { href: "/exams", labelKey: "nav.exams", labelFallback: "Exams", icon: "exams" },
-  { href: "/library", labelKey: "nav.library", labelFallback: "Library", icon: "library" },
-  { href: "/forum", labelKey: "nav.forum", labelFallback: "Forum", icon: "forum" },
-  { href: "/certificates", labelKey: "nav.certificates", labelFallback: "Certificates", icon: "certs" },
-];
-
-const SOCIAL_COLORS: Record<SidebarSocialLink["network"], string> = {
+const SOCIAL_COLORS: Record<SidebarSocialNetwork, string> = {
   whatsapp: "#25D366",
   facebook: "#1877F2",
   telegram: "#229ED9",
   youtube: "#FF0000",
   linkedin: "#0A66C2",
+  instagram: "#E4405F",
+  tiktok: "#010101",
+  x: "#111111",
 };
 
-function SocialIcon({ network }: { network: SidebarSocialLink["network"] }) {
+function SocialIcon({ network }: { network: SidebarSocialNetwork }) {
   switch (network) {
     case "whatsapp":
       return (
@@ -70,10 +67,28 @@ function SocialIcon({ network }: { network: SidebarSocialLink["network"] }) {
           <path d="M20.45 20.45h-3.56v-5.57c0-1.33-.02-3.04-1.85-3.04-1.86 0-2.14 1.45-2.14 2.95v5.66H9.34V9h3.42v1.56h.05c.48-.9 1.64-1.85 3.37-1.85 3.6 0 4.27 2.37 4.27 5.46zM5.34 7.43a2.06 2.06 0 1 1 0-4.12 2.06 2.06 0 0 1 0 4.12M7.12 20.45H3.56V9h3.56z" />
         </svg>
       );
+    case "instagram":
+      return (
+        <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24" aria-hidden>
+          <path d="M12 2.2c3.2 0 3.6 0 4.9.1 1.2.1 1.9.2 2.3.4.6.2 1 .5 1.5 1 .4.4.7.9 1 1.5.2.4.4 1.1.4 2.3.1 1.3.1 1.7.1 4.9s0 3.6-.1 4.9c-.1 1.2-.2 1.9-.4 2.3-.2.6-.5 1-1 1.5-.4.4-.9.7-1.5 1-.4.2-1.1.4-2.3.4-1.3.1-1.7.1-4.9.1s-3.6 0-4.9-.1c-1.2-.1-1.9-.2-2.3-.4-.6-.2-1-.5-1.5-1-.4-.4-.7-.9-1-1.5-.2-.4-.4-1.1-.4-2.3C2.2 15.6 2.2 15.2 2.2 12s0-3.6.1-4.9c.1-1.2.2-1.9.4-2.3.2-.6.5-1 1-1.5.4-.4.9-.7 1.5-1 .4-.2 1.1-.4 2.3-.4C8.4 2.2 8.8 2.2 12 2.2m0 1.8c-3.2 0-3.5 0-4.8.1-.9 0-1.5.2-1.8.3-.4.2-.7.3-1 .7-.3.3-.5.6-.7 1-.1.3-.3.9-.3 1.8-.1 1.2-.1 1.6-.1 4.8s0 3.5.1 4.8c0 .9.2 1.5.3 1.8.2.4.3.7.7 1 .3.3.6.5 1 .7.3.1.9.3 1.8.3 1.2.1 1.6.1 4.8.1s3.5 0 4.8-.1c.9 0 1.5-.2 1.8-.3.4-.2.7-.3 1-.7.3-.3.5-.6.7-1 .1-.3.3-.9.3-1.8.1-1.2.1-1.6.1-4.8s0-3.5-.1-4.8c0-.9-.2-1.5-.3-1.8-.2-.4-.3-.7-.7-1-.3-.3-.6-.5-1-.7-.3-.1-.9-.3-1.8-.3-1.3-.1-1.6-.1-4.8-.1zm0 3.1a5 5 0 1 1 0 9.9 5 5 0 0 1 0-9.9zm0 1.8a3.2 3.2 0 1 0 0 6.3 3.2 3.2 0 0 0 0-6.3zm5.2-2.1a1.2 1.2 0 1 1 0 2.3 1.2 1.2 0 0 1 0-2.3z" />
+        </svg>
+      );
+    case "tiktok":
+      return (
+        <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24" aria-hidden>
+          <path d="M19.6 7.2a6.4 6.4 0 0 1-3.8-1.2v7.1a5.4 5.4 0 1 1-4.7-5.3v2.4a3 3 0 1 0 2.2 2.9V2.5h2.5a3.9 3.9 0 0 0 3.8 3.8z" />
+        </svg>
+      );
+    case "x":
+      return (
+        <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24" aria-hidden>
+          <path d="M18.2 2H21l-6.6 7.5L22 22h-6.2l-4.9-6.4L5.4 22H2.6l7-8L2 2h6.4l4.4 5.8L18.2 2zm-1.1 18h1.7L7 3.9H5.2L17.1 20z" />
+        </svg>
+      );
   }
 }
 
-function NavIcon({ icon, active }: { icon: NavItem["icon"]; active: boolean }) {
+function NavIcon({ icon, active }: { icon: string; active: boolean }) {
   const stroke = active ? "#2563EB" : "#93A4BD";
   const common = {
     fill: "none" as const,
@@ -82,7 +97,8 @@ function NavIcon({ icon, active }: { icon: NavItem["icon"]; active: boolean }) {
     strokeLinecap: "round" as const,
     strokeLinejoin: "round" as const,
   };
-  switch (icon) {
+  const key = icon;
+  switch (key) {
     case "home":
       return (
         <svg className="h-5 w-5" viewBox="0 0 24 24" aria-hidden>
@@ -90,6 +106,7 @@ function NavIcon({ icon, active }: { icon: NavItem["icon"]; active: boolean }) {
         </svg>
       );
     case "courses":
+    case "myCourses":
       return (
         <svg className="h-5 w-5" viewBox="0 0 24 24" aria-hidden>
           <path {...common} d="M4 5h7v14H4zM13 5h7v14h-7z" />
@@ -126,6 +143,27 @@ function NavIcon({ icon, active }: { icon: NavItem["icon"]; active: boolean }) {
           <path {...common} d="M5 6h14a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H10l-4 3v-3H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2z" />
         </svg>
       );
+    case "jobs":
+      return (
+        <svg className="h-5 w-5" viewBox="0 0 24 24" aria-hidden>
+          <rect {...common} x="3" y="7" width="18" height="13" rx="2" />
+          <path {...common} d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+        </svg>
+      );
+    case "live":
+      return (
+        <svg className="h-5 w-5" viewBox="0 0 24 24" aria-hidden>
+          <circle {...common} cx="12" cy="12" r="3" />
+          <path {...common} d="M5 12a7 7 0 0 1 7-7M19 12a7 7 0 0 0-7-7M5 12a7 7 0 0 0 7 7M19 12a7 7 0 0 1-7 7" />
+        </svg>
+      );
+    case "consultations":
+      return (
+        <svg className="h-5 w-5" viewBox="0 0 24 24" aria-hidden>
+          <path {...common} d="M4 5h16v10H8l-4 4V5z" />
+          <path {...common} d="M8 9h8M8 12h5" />
+        </svg>
+      );
     case "certs":
       return (
         <svg className="h-5 w-5" viewBox="0 0 24 24" aria-hidden>
@@ -134,14 +172,31 @@ function NavIcon({ icon, active }: { icon: NavItem["icon"]; active: boolean }) {
           <path {...common} d="M10 16v4l2-1 2 1v-4" />
         </svg>
       );
+    case "account":
+      return (
+        <svg className="h-5 w-5" viewBox="0 0 24 24" aria-hidden>
+          <circle {...common} cx="12" cy="8" r="3.5" />
+          <path {...common} d="M5 19.5c1.2-3.2 3.6-5 7-5s5.8 1.8 7 5" />
+        </svg>
+      );
     case "settings":
       return (
         <svg className="h-5 w-5" viewBox="0 0 24 24" aria-hidden>
-          <circle {...common} cx="12" cy="12" r="3" />
           <path
             {...common}
-            d="M12 3.5v2.1M12 18.4v2.1M4.9 6.5l1.5 1.5M17.6 16l1.5 1.5M3.5 12h2.1M18.4 12h2.1M4.9 17.5l1.5-1.5M17.6 8l1.5-1.5"
+            d="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4z"
           />
+          <path
+            {...common}
+            d="M19.4 13a7.6 7.6 0 0 0 .1-2l2-1.6-2-3.4-2.4 1a7.7 7.7 0 0 0-1.7-1l-.4-2.6H9l-.4 2.6a7.7 7.7 0 0 0-1.7 1l-2.4-1-2 3.4 2 1.6a7.6 7.6 0 0 0 .1 2l-2 1.6 2 3.4 2.4-1a7.7 7.7 0 0 0 1.7 1l.4 2.6h6l.4-2.6a7.7 7.7 0 0 0 1.7-1l2.4 1 2-3.4-2-1.6z"
+          />
+        </svg>
+      );
+    default:
+      return (
+        <svg className="h-5 w-5" viewBox="0 0 24 24" aria-hidden>
+          <circle {...common} cx="12" cy="12" r="8" />
+          <path {...common} d="M12 8v4l2.5 2.5" />
         </svg>
       );
   }
@@ -154,33 +209,48 @@ function isActivePath(pathname: string, href: string) {
 
 export function AppSidebar({
   open,
+  desktopHidden = false,
   onClose,
   socialLinks = [],
+  navTabs,
 }: {
   open: boolean;
+  desktopHidden?: boolean;
   onClose: () => void;
   socialLinks?: SidebarSocialLink[];
+  navTabs?: NavTab[];
 }) {
   const pathname = usePathname();
-  const { status } = useSession();
+  const { data: session, status } = useSession();
   const t = useT();
-  const settingsHref = status === "authenticated" ? "/dashboard/profile" : "/login";
+  const locale = useLocale();
+  const accountHref = status === "authenticated" ? "/dashboard/profile" : "/login";
+  const settingsHref =
+    status !== "authenticated"
+      ? "/login"
+      : session?.user?.role === "STUDENT"
+        ? "/dashboard/account-settings"
+        : "/dashboard/profile";
 
-  /** مسميات مخصصة من إدارة "مسميات المنصة" — تُستخدم بدل الترجمة الافتراضية عند توفرها */
   const coursesLabel = useLabel("courses", t("common.courses", "Courses"));
   const teachersLabel = useLabel("teachers", t("nav.teachers", "Trainers"));
   const examsLabel = useLabel("exams", t("nav.exams", "Exams"));
   const libraryLabel = useLabel("library", t("nav.library", "Library"));
-  const certsLabel = useLabel("certificates", t("nav.certificates", "Certificates"));
-  const labelOverrideByHref: Record<string, string> = {
-    "/courses": coursesLabel,
-    "/teachers": teachersLabel,
-    "/exams": examsLabel,
-    "/library": libraryLabel,
-    "/certificates": certsLabel,
+  const labelOverrideByKey: Record<string, string> = {
+    courses: coursesLabel,
+    teachers: teachersLabel,
+    exams: examsLabel,
+    library: libraryLabel,
   };
 
+  const tabs = visibleNavTabs(navTabs?.length ? navTabs : DEFAULT_NAV_TABS);
+  const hasAccountTab = tabs.some((tab) => tab.key === "account" || tab.icon === "account");
+
   useEffect(() => {
+    // Close mobile drawer only — desktop visibility is toggled by the menu button.
+    if (typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches) {
+      return;
+    }
     onClose();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- close drawer on navigation only
   }, [pathname]);
@@ -205,8 +275,10 @@ export function AppSidebar({
       />
       <aside
         data-open={open ? "true" : "false"}
+        data-desktop-hidden={desktopHidden ? "true" : "false"}
         className="app-sidebar z-50 flex w-full flex-col border-white/5 lg:w-auto"
         aria-label={t("nav.sidebar", "Main navigation")}
+        aria-hidden={desktopHidden ? true : undefined}
       >
         <div className="flex items-center justify-between gap-2 border-b border-white/10 px-4 py-3 lg:hidden">
           <span className="text-sm font-semibold text-white">{t("nav.menu", "القائمة")}</span>
@@ -222,13 +294,15 @@ export function AppSidebar({
           </button>
         </div>
 
-        <nav className="app-sidebar-nav flex flex-1 flex-col gap-1 overflow-x-hidden overflow-y-auto px-2 py-4">
-          {NAV_ITEMS.map((item) => {
+        <nav className="app-sidebar-nav flex flex-1 flex-col gap-1 overflow-x-hidden overflow-y-auto px-2 py-4 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+          {tabs.map((item) => {
             const active = isActivePath(pathname, item.href);
-            const label = labelOverrideByHref[item.href] ?? t(item.labelKey, item.labelFallback);
+            const label =
+              labelOverrideByKey[item.key] ??
+              ((locale === "ar" ? item.labelAr : item.labelEn) || item.labelEn);
             return (
               <Link
-                key={item.href}
+                key={item.key}
                 href={item.href}
                 onClick={onClose}
                 title={label}
@@ -250,22 +324,40 @@ export function AppSidebar({
         </nav>
 
         <div className="mt-auto shrink-0 overflow-x-hidden border-t border-white/10 px-2 py-3">
+          {!hasAccountTab ? (
+            <Link
+              href={accountHref}
+              onClick={onClose}
+              title={t("nav.myAccount", "My account")}
+              className={`app-sidebar-link flex items-center gap-3 rounded-xl px-3 py-2.5 transition ${
+                isActivePath(pathname, "/dashboard/profile")
+                  ? "bg-[#2563EB]/20 text-white"
+                  : "text-slate-300 hover:bg-white/5 hover:text-white"
+              }`}
+            >
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl">
+                <NavIcon icon="account" active={isActivePath(pathname, "/dashboard/profile")} />
+              </span>
+              <span className="app-sidebar-label font-medium">
+                {t("nav.myAccount", "My account")}
+              </span>
+            </Link>
+          ) : null}
+
           <Link
             href={settingsHref}
             onClick={onClose}
             title={t("nav.settings", "Settings")}
             className={`app-sidebar-link flex items-center gap-3 rounded-xl px-3 py-2.5 transition ${
-              isActivePath(pathname, "/dashboard/profile")
+              isActivePath(pathname, settingsHref)
                 ? "bg-[#2563EB]/20 text-white"
                 : "text-slate-300 hover:bg-white/5 hover:text-white"
             }`}
           >
             <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl">
-              <NavIcon icon="settings" active={isActivePath(pathname, "/dashboard/profile")} />
+              <NavIcon icon="settings" active={isActivePath(pathname, settingsHref)} />
             </span>
-            <span className="app-sidebar-label font-medium">
-              {t("nav.settings", "Settings")}
-            </span>
+            <span className="app-sidebar-label font-medium">{t("nav.settings", "Settings")}</span>
           </Link>
 
           {socialLinks.length > 0 ? (
@@ -279,7 +371,7 @@ export function AppSidebar({
                   title={link.label}
                   aria-label={link.label}
                   className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white shadow-sm transition hover:scale-105 hover:opacity-90"
-                  style={{ backgroundColor: SOCIAL_COLORS[link.network] }}
+                  style={{ backgroundColor: SOCIAL_COLORS[link.network] ?? "#64748b" }}
                 >
                   <SocialIcon network={link.network} />
                 </a>

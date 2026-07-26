@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { OptimizedImage } from "@/components/OptimizedImage";
 import type { PlatformNewsItem } from "@/lib/types";
 
 const AUTO_MS = 5000;
@@ -36,36 +37,30 @@ export function HomePlatformNewsSlider({ items }: { items: PlatformNewsItem[] })
 
   const goPrev = () => setActive((prev) => (prev - 1 + slides.length) % slides.length);
   const goNext = () => setActive((prev) => (prev + 1) % slides.length);
+  const activeSlide = slides[active] ?? slides[0];
 
   return (
     <div className="relative w-full overflow-hidden rounded-2xl border border-[var(--color-border)] bg-black/5 shadow-[var(--shadow-card)]">
       <div className="relative aspect-[16/9] w-full min-h-[200px] sm:min-h-[280px]">
-        {slides.map((slide, idx) => (
-          <img
-            key={slide.id}
-            src={slide.src}
+        {activeSlide ? (
+          <OptimizedImage
+            key={activeSlide.id}
+            src={activeSlide.src}
             alt=""
-            className={`absolute inset-0 z-0 h-full w-full object-cover transition-opacity duration-500 ease-out ${
-              idx === active ? "opacity-100" : "opacity-0"
-            }`}
-            aria-hidden={idx !== active}
+            fill
+            sizes="(max-width: 768px) 100vw, 1152px"
+            className="object-cover"
+            quality={70}
           />
-        ))}
+        ) : null}
         <div
           className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-2/5 bg-gradient-to-t from-black/75 via-black/35 to-transparent"
           aria-hidden
         />
         <div className="absolute inset-x-0 bottom-0 z-20 p-4 pb-10 sm:p-6 sm:pb-12">
-          {slides.map((slide, idx) => (
-            <p
-              key={slide.id}
-              className={`text-lg font-bold leading-snug text-white drop-shadow sm:text-xl ${
-                idx === active ? "block" : "hidden"
-              }`}
-            >
-              {slide.text}
-            </p>
-          ))}
+          <p className="text-lg font-bold leading-snug text-white drop-shadow sm:text-xl">
+            {activeSlide?.text}
+          </p>
         </div>
 
         {canSlide ? (

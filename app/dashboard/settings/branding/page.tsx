@@ -21,9 +21,20 @@ export default async function DashboardBrandingSettingsPage() {
     headerLogoUrl: "" as string | null,
     platformName: "" as string | null,
     platformNameEn: "" as string | null,
+    platformNameColor: "#FFFFFF" as string | null,
+    platformNameColor2: "" as string | null,
+    showPlatformName: true,
+    showPlatformLogo: true,
     ga4Id: "" as string | null,
     gtmId: "" as string | null,
     facebookPixelId: "" as string | null,
+    metaCapiConfigured: false,
+    contactEmail: "" as string | null,
+    defaultCurrency: "EGP" as string | null,
+    seoTitle: "" as string | null,
+    seoTitleEn: "" as string | null,
+    seoDescription: "" as string | null,
+    seoDescriptionEn: "" as string | null,
   };
   try {
     const [brand, homepage] = await Promise.all([getBrandAndAnalyticsSettings(), getHomepageSettings()]);
@@ -36,9 +47,20 @@ export default async function DashboardBrandingSettingsPage() {
       headerLogoUrl: homepage.headerLogoUrl ?? null,
       platformName: homepage.platformName ?? null,
       platformNameEn: homepage.platformNameEn ?? null,
+      platformNameColor: homepage.platformNameColor ?? "#FFFFFF",
+      platformNameColor2: homepage.platformNameColor2 ?? "",
+      showPlatformName: homepage.showPlatformName !== false,
+      showPlatformLogo: homepage.showPlatformLogo !== false,
       ga4Id: brand.ga4Id,
       gtmId: brand.gtmId,
       facebookPixelId: brand.facebookPixelId,
+      metaCapiConfigured: brand.metaCapiConfigured === true,
+      contactEmail: (homepage as { contactEmail?: string | null }).contactEmail ?? null,
+      defaultCurrency: (homepage as { defaultCurrency?: string | null }).defaultCurrency ?? "EGP",
+      seoTitle: homepage.pageTitle ?? null,
+      seoTitleEn: homepage.pageTitleEn ?? null,
+      seoDescription: homepage.seoDescription ?? null,
+      seoDescriptionEn: homepage.seoDescriptionEn ?? null,
     };
   } catch {
     /* قاعدة البيانات غير متصلة */
@@ -52,7 +74,7 @@ export default async function DashboardBrandingSettingsPage() {
       <p className="mt-1 text-sm text-[var(--color-muted)]">
         {t(
           "dashboard.brandingDescription",
-          "Manage platform brand colors, favicon, and analytics integrations (Google Analytics 4, Google Tag Manager, Facebook Pixel).",
+          "Manage brand colors, favicon, browser title/description, and analytics integrations.",
         )}
       </p>
       <BrandingSettingsForm initialSettings={initial} />

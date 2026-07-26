@@ -29,7 +29,7 @@ export default async function CertificatePrintPage({
   const isStaff = session.user.role === "ADMIN" || session.user.role === "ASSISTANT_ADMIN";
   if (!isOwner && !isStaff) notFound();
 
-  let academyName = isEn ? "Mostafa Abdullah academy" : "أكاديمية مصطفى عبدالله";
+  let academyName = isEn ? "WorldWay" : "WorldWay";
   let design = null as Awaited<ReturnType<typeof getCertificateDesignSettings>> | null;
   try {
     const [settings, designSettings] = await Promise.all([

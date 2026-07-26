@@ -34,10 +34,12 @@ function StatIcon({ kind }: { kind: HomepageStatKind }) {
     );
   }
   if (kind === "trainers") {
+    // Clear instructor mark: chalkboard + stand (not the old diamond that read as an eye)
     return (
       <svg className="h-6 w-6" viewBox="0 0 24 24" aria-hidden>
-        <path {...common} d="M4 14 12 9l8 5-8 5-8-5z" />
-        <path {...common} d="M12 9v10M7 11.5v2M17 11.5v2" />
+        <rect {...common} x="3" y="3" width="18" height="12" rx="1.5" />
+        <path {...common} d="M7 7.5h10M7 10.5h6" />
+        <path {...common} d="M12 15v4M8 21h8" />
       </svg>
     );
   }

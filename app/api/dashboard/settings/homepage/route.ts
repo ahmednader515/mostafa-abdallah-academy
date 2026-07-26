@@ -8,10 +8,10 @@ import { PLATFORM_DETAILS_PRESET_ICON_OPTIONS } from "@/lib/platform-details";
 import { PLATFORM_NEWS_MAX_ITEMS } from "@/lib/platform-news";
 import {
   type AcademyHeroSlide,
-  type HomepageMainNavFlags,
   type HomepageStatItem,
   parseHeroSlide,
   parseHomepageStatItem,
+  parseMainNavFlagsJson,
   serializeHeroSlides,
   serializeMainNavFlags,
   serializeStatsRibbon,
@@ -446,13 +446,20 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: "بيانات أزرار التنقل الرئيسية غير صالحة" }, { status: 400 });
     } else {
       const o = body.mainNavFlags as Record<string, unknown>;
-      const flags: HomepageMainNavFlags = {
-        jobs: Boolean(o.jobs),
-        courses: Boolean(o.courses),
-        library: Boolean(o.library),
-        social: Boolean(o.social),
-      };
-      main_nav_flags_json = serializeMainNavFlags(flags);
+      main_nav_flags_json = serializeMainNavFlags(
+        parseMainNavFlagsJson(
+          JSON.stringify({
+            jobs: Boolean(o.jobs),
+            courses: Boolean(o.courses),
+            library: Boolean(o.library),
+            social: Boolean(o.social),
+            jobsIcon: o.jobsIcon,
+            coursesIcon: o.coursesIcon,
+            libraryIcon: o.libraryIcon,
+            socialIcon: o.socialIcon,
+          }),
+        ),
+      );
     }
   }
 

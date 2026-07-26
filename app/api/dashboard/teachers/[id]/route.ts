@@ -29,6 +29,15 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     phone?: string | null;
     teacherSubject?: string | null;
     teacherAvatarUrl?: string | null;
+    teacherBio?: string | null;
+    permissions?: Partial<{
+      canCreateCourses: boolean;
+      canPostJobs: boolean;
+      canCreateForumTopics: boolean;
+      canModerateForum: boolean;
+      canManageLibrary: boolean;
+      canManageCoupons: boolean;
+    }>;
   };
   try {
     body = await request.json();
@@ -75,18 +84,37 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     patch.teacher_avatar_url = u.length ? u.slice(0, 2000) : null;
   }
 
-  if (Object.keys(patch).length === 0) {
+  if (body.teacherBio !== undefined) {
+    const b = body.teacherBio === null ? "" : String(body.teacherBio).trim();
+    patch.teacher_bio = b.length ? b.slice(0, 4000) : null;
+  }
+
+  if (Object.keys(patch).length === 0 && !body.permissions) {
     return NextResponse.json({ error: "لا توجد حقول للتحديث" }, { status: 400 });
   }
 
   try {
-    await updateUser(id, patch);
+    if (Object.keys(patch).length > 0) await updateUser(id, patch);
+    if (body.permissions) {
+      const { upsertPermissionOverride } = await import("@/lib/lms-features-db");
+      await upsertPermissionOverride({
+        userId: id,
+        ...body.permissions,
+      });
+    }
   } catch (e) {
     console.error("PATCH /api/dashboard/teachers/[id]", e);
     return NextResponse.json({ error: "فشل تحديث الحساب" }, { status: 500 });
   }
 
   const updated = await getUserById(id);
+  let permissions = null;
+  try {
+    const { getEffectivePermissions } = await import("@/lib/lms-features-db");
+    permissions = await getEffectivePermissions(id, "TEACHER");
+  } catch {
+    /* noop */
+  }
   return NextResponse.json({
     success: true,
     teacher: updated
@@ -97,6 +125,8 @@ export async function PATCH(request: NextRequest, { params }: Params) {
           student_number: updated.student_number ?? null,
           teacher_subject: (updated as { teacher_subject?: string | null }).teacher_subject ?? null,
           teacher_avatar_url: (updated as { teacher_avatar_url?: string | null }).teacher_avatar_url ?? null,
+          teacher_bio: (updated as { teacher_bio?: string | null }).teacher_bio ?? null,
+          permissions,
         }
       : null,
   });

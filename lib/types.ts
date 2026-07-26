@@ -9,7 +9,7 @@ export type CourseDeliveryMode = "recorded" | "live" | "hybrid";
 export type LiveStreamAccessMode = "public" | "members" | "paid" | "subscribers" | "course_enrolled";
 export type HomepageSectionType =
   | "courses" | "library" | "jobs" | "teachers" | "reviews" | "live" | "social"
-  | "subscriptions" | "news" | "platform_details" | "custom";
+  | "subscriptions" | "news" | "platform_details" | "policies" | "custom";
 
 export interface PlatformLabel {
   key: string;
@@ -91,7 +91,7 @@ export interface User {
   balance: string;
   student_number?: string | null;
   guardian_number?: string | null;
-  /** عنوان المادة / التخصص — يظهر في «اختر المدرسين» */
+  /** عنوان المادة / التخصص — يظهر في «اختر المدربين» */
   teacher_subject?: string | null;
   teacher_avatar_url?: string | null;
   /** 1–4 لترتيب البطاقة في الرئيسية؛ null = تلقائي بعد المحددين */
@@ -99,6 +99,9 @@ export interface User {
   /** كود حقوق الطبع والنشر — للطلاب فقط، فريد، يظهر على مشغّل الحصص */
   copyright_code?: string | null;
   current_session_id?: string | null;
+  is_suspended?: boolean;
+  last_login_at?: Date | string | null;
+  teacher_bio?: string | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -218,6 +221,10 @@ export interface HomepageSetting {
   socialLeftEnabled?: boolean;
   pageTitle: string | null;
   pageTitleEn?: string | null;
+  /** وصف المتصفح / SEO (عربي) */
+  seoDescription?: string | null;
+  /** وصف المتصفح / SEO (إنجليزي) */
+  seoDescriptionEn?: string | null;
   heroBgPreset: HeroBgPreset | string | null;
   /** لون أعلى التدرج المخصّص (#RRGGBB) — يُستخدم مع heroBgCustomTo عند صلاحيتهما */
   heroBgCustomFrom?: string | null;
@@ -302,7 +309,7 @@ export interface HomepageSetting {
   /** نص زر CTA */
   ctaButtonText?: string | null;
   ctaButtonTextEn?: string | null;
-  /** عند true تظهر صفحة «اختر المدرسين» ويُسمح بحسابات TEACHER */
+  /** عند true تظهر صفحة «اختر المدربين» ويُسمح بحسابات TEACHER */
   teachersEnabled?: boolean;
   /** عند true يظهر قسم «الاشتراكات المتاحة» ويُفعّل شراء باقات الوصول لكل الدورات المدفوعة */
   subscriptionsEnabled?: boolean;
@@ -380,9 +387,24 @@ export interface HomepageSetting {
   gtmId?: string | null;
   /** معرّف بيكسل فيسبوك */
   facebookPixelId?: string | null;
+  /** هل Conversions API مُعدّ (بدون كشف الرمز) */
+  metaCapiConfigured?: boolean;
+  /** لون اسم المنصة (#RRGGBB) */
+  platformNameColor?: string | null;
+  /** اللون الثاني لاسم المنصة (وضع لونين) */
+  platformNameColor2?: string | null;
+  /** إظهار اسم المنصة بجانب اللوجو */
+  showPlatformName?: boolean;
+  /** إظهار صورة اللوجو */
+  showPlatformLogo?: boolean;
+  /** بطاقات سياسات الموقع (JSON: PolicyCard[]) */
+  policyCardsJson?: string | null;
+  /** تبويبات الشريط الجانبي (JSON: NavTab[]) */
+  navTabsJson?: string | null;
 }
 
 export type StoreProductContentType = "file" | "article";
+export type StoreProductFileKind = "pdf" | "word" | "excel" | "powerpoint" | "image" | "other";
 
 export interface StoreProduct {
   id: string;
@@ -399,6 +421,7 @@ export interface StoreProduct {
   categoryId: string | null;
   contentType: StoreProductContentType;
   articleBody: string | null;
+  fileKind?: StoreProductFileKind | string | null;
 }
 
 export interface LibraryCategory {
@@ -419,13 +442,27 @@ export interface JobPosting {
   descriptionAr: string | null;
   location: string | null;
   jobType: string | null;
+  imageUrl?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  locationAr?: string | null;
+  locationEn?: string | null;
+  jobTypeAr?: string | null;
+  jobTypeEn?: string | null;
   isPublished: boolean;
   order: number;
   createdAt: string;
   updatedAt: string;
 }
 
-export type SubscriptionDurationKind = "week" | "month" | "year" | "months_3" | "months_6" | "months_9";
+export type SubscriptionDurationKind =
+  | "week"
+  | "month"
+  | "year"
+  | "months_3"
+  | "months_6"
+  | "months_9"
+  | "custom_days";
 
 export interface Course {
   id: string;
@@ -457,6 +494,12 @@ export interface Course {
   isVisible?: boolean;
   /** طريقة تسليم الكورس: مسجّل / مباشر / مختلط */
   deliveryMode?: CourseDeliveryMode | string | null;
+  country?: string | null;
+  country_en?: string | null;
+  icons_json?: string | null;
+  teacher_image_url?: string | null;
+  teacher_description?: string | null;
+  teacher_description_en?: string | null;
   created_at: Date;
   updated_at: Date;
 }

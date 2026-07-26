@@ -3,8 +3,10 @@ import {
   getCategories,
   getCoursesPublished,
   getReviews,
+  getReviewsForHomepage,
   listActiveSubscriptionPlansPublic,
   listStoreProductsPublic,
+  countActiveStoreProductsPublic,
   listTeachersForHomepage,
 } from "@/lib/db";
 import {
@@ -47,6 +49,12 @@ export const getReviewsCached = unstable_cache(
   { revalidate: PUBLIC_DATA_REVALIDATE, tags: ["reviews"] },
 );
 
+export const getReviewsForHomepageCached = unstable_cache(
+  () => getReviewsForHomepage(6),
+  ["homepage-reviews"],
+  { revalidate: PUBLIC_DATA_REVALIDATE, tags: ["reviews"] },
+);
+
 export const getTeachersForHomepageCached = unstable_cache(
   () => listTeachersForHomepage(),
   ["homepage-teachers"],
@@ -62,6 +70,12 @@ export const getSubscriptionPlansPublicCached = unstable_cache(
 export const getStoreProductsPublicCached = unstable_cache(
   () => listStoreProductsPublic(),
   ["store-products-public"],
+  { revalidate: PUBLIC_DATA_REVALIDATE, tags: ["store"] },
+);
+
+export const getStoreProductsCountPublicCached = unstable_cache(
+  () => countActiveStoreProductsPublic(),
+  ["store-products-count-public"],
   { revalidate: PUBLIC_DATA_REVALIDATE, tags: ["store"] },
 );
 

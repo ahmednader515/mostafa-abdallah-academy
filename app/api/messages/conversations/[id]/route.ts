@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { getConversationById, getMessagesByConversationId, canUserAccessConversation } from "@/lib/db";
+import { getConversationById, getMessagesByConversationId, canUserAccessConversation, markConversationMessagesRead } from "@/lib/db";
 import type { UserRole } from "@/lib/types";
 
 /** جلب رسائل محادثة معينة */
@@ -25,6 +25,7 @@ export async function GET(
     return NextResponse.json({ error: "غير مصرح" }, { status: 403 });
   }
 
+  await markConversationMessagesRead(conversationId, session.user.id).catch(() => undefined);
   const messages = await getMessagesByConversationId(conversationId);
   return NextResponse.json({ conversation, messages });
 }

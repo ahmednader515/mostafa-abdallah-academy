@@ -1,22 +1,24 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { SectionCarousel } from "@/components/SectionCarousel";
 
 type Props = {
   children: ReactNode;
   className?: string;
-  /** Extra class on the inner flex track */
   trackClassName?: string;
 };
 
-/** Horizontal scroll row for cards (sections, library, etc.) */
+/** Horizontal scroll row for cards — uses SectionCarousel without chrome by default. */
 export function HorizontalScrollRow({ children, className = "", trackClassName = "" }: Props) {
   return (
-    <div
-      className={`-mx-4 overflow-x-auto px-4 pb-2 [scrollbar-width:thin] sm:-mx-0 sm:px-0 ${className}`}
-      style={{ WebkitOverflowScrolling: "touch" }}
+    <SectionCarousel
+      className={className}
+      trackClassName={trackClassName}
+      intervalSeconds={0}
+      showControls={false}
     >
-      <div className={`flex w-max gap-5 ${trackClassName}`}>{children}</div>
-    </div>
+      {children}
+    </SectionCarousel>
   );
 }

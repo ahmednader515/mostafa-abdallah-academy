@@ -21,13 +21,16 @@ import { ACADEMY_HOME_HERO_SLIDES } from "@/lib/academy-home-hero-slides";
 import type { AcademyHeroSlide, AcademyHeroSlideFeature } from "@/lib/academy-home-hero-slides";
 import {
   HERO_FEATURE_KINDS,
+  HOMEPAGE_MAIN_NAV_ICONS,
   emptyHeroSlide,
   parseHeroSlidesJson,
   parseMainNavFlagsJson,
   parseStatsRibbonJson,
   type HomepageMainNavFlags,
+  type HomepageMainNavIcon,
   type HomepageStatItem,
 } from "@/lib/homepage-hero-stats";
+import { HomeMainNavIcon } from "@/components/HomeMainNavIcon";
 
 type PublishedCourseOption = {
   id: string;
@@ -790,43 +793,56 @@ export function HomepageSettingsForm({
       <div className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] p-6">
         <h3 className="mb-2 text-lg font-semibold text-[var(--color-foreground)]">{fh("mainNavTitle")}</h3>
         <p className="mb-4 text-sm text-[var(--color-muted)]">{fh("mainNavIntro")}</p>
-        <div className="grid gap-2 sm:grid-cols-2">
-          <label className="flex items-center gap-2 rounded-[var(--radius-btn)] border border-[var(--color-border)] bg-[var(--color-background)] p-3 text-sm font-medium text-[var(--color-foreground)]">
-            <input
-              type="checkbox"
-              className="accent-[var(--color-primary)]"
-              checked={mainNavFlags.jobs}
-              onChange={(e) => setMainNavFlags((f) => ({ ...f, jobs: e.target.checked }))}
-            />
-            {fh("mainNavJobs")}
-          </label>
-          <label className="flex items-center gap-2 rounded-[var(--radius-btn)] border border-[var(--color-border)] bg-[var(--color-background)] p-3 text-sm font-medium text-[var(--color-foreground)]">
-            <input
-              type="checkbox"
-              className="accent-[var(--color-primary)]"
-              checked={mainNavFlags.courses}
-              onChange={(e) => setMainNavFlags((f) => ({ ...f, courses: e.target.checked }))}
-            />
-            {fh("mainNavCourses")}
-          </label>
-          <label className="flex items-center gap-2 rounded-[var(--radius-btn)] border border-[var(--color-border)] bg-[var(--color-background)] p-3 text-sm font-medium text-[var(--color-foreground)]">
-            <input
-              type="checkbox"
-              className="accent-[var(--color-primary)]"
-              checked={mainNavFlags.library}
-              onChange={(e) => setMainNavFlags((f) => ({ ...f, library: e.target.checked }))}
-            />
-            {fh("mainNavLibrary")}
-          </label>
-          <label className="flex items-center gap-2 rounded-[var(--radius-btn)] border border-[var(--color-border)] bg-[var(--color-background)] p-3 text-sm font-medium text-[var(--color-foreground)]">
-            <input
-              type="checkbox"
-              className="accent-[var(--color-primary)]"
-              checked={mainNavFlags.social}
-              onChange={(e) => setMainNavFlags((f) => ({ ...f, social: e.target.checked }))}
-            />
-            {fh("mainNavSocial")}
-          </label>
+        <div className="grid gap-3 sm:grid-cols-2">
+          {(
+            [
+              { key: "jobs", iconKey: "jobsIcon", label: fh("mainNavJobs") },
+              { key: "courses", iconKey: "coursesIcon", label: fh("mainNavCourses") },
+              { key: "library", iconKey: "libraryIcon", label: fh("mainNavLibrary") },
+              { key: "social", iconKey: "socialIcon", label: fh("mainNavSocial") },
+            ] as const
+          ).map((row) => (
+            <div
+              key={row.key}
+              className="rounded-[var(--radius-btn)] border border-[var(--color-border)] bg-[var(--color-background)] p-3"
+            >
+              <label className="flex items-center gap-2 text-sm font-medium text-[var(--color-foreground)]">
+                <input
+                  type="checkbox"
+                  className="accent-[var(--color-primary)]"
+                  checked={mainNavFlags[row.key]}
+                  onChange={(e) =>
+                    setMainNavFlags((f) => ({ ...f, [row.key]: e.target.checked }))
+                  }
+                />
+                {row.label}
+              </label>
+              <div className="mt-3 flex items-center gap-3">
+                <span className="inline-flex h-9 w-9 items-center justify-center rounded border border-[var(--color-border)] text-[var(--color-primary)]">
+                  <HomeMainNavIcon icon={mainNavFlags[row.iconKey]} />
+                </span>
+                <label className="flex-1 text-xs text-[var(--color-muted)]">
+                  {fh("mainNavIconLabel")}
+                  <select
+                    value={mainNavFlags[row.iconKey]}
+                    onChange={(e) =>
+                      setMainNavFlags((f) => ({
+                        ...f,
+                        [row.iconKey]: e.target.value as HomepageMainNavIcon,
+                      }))
+                    }
+                    className="mt-1 w-full rounded-[var(--radius-btn)] border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1.5 text-sm text-[var(--color-foreground)]"
+                  >
+                    {HOMEPAGE_MAIN_NAV_ICONS.map((icon) => (
+                      <option key={icon} value={icon}>
+                        {fh(`mainNavIcon_${icon}`)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
 

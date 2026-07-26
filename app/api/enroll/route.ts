@@ -11,6 +11,8 @@ import {
   userHasActivePlatformSubscription,
 } from "@/lib/db";
 import { getCourseAccessFields, createNotification } from "@/lib/lms-spec-db";
+import { recordLandingPageEventBySlug } from "@/lib/landing-pages-db";
+import { trackMetaCapiServer } from "@/lib/meta-capi-server";
 
 export async function POST(request: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -20,6 +22,7 @@ export async function POST(request: NextRequest) {
 
   const { searchParams } = new URL(request.url);
   const courseId = searchParams.get("courseId");
+  const landingPageSlug = searchParams.get("lp")?.trim() || undefined;
   if (!courseId) {
     return NextResponse.json({ error: "معرف الدورة مطلوب" }, { status: 400 });
   }
@@ -72,12 +75,45 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  if (landingPageSlug) {
+    await recordLandingPageEventBySlug(landingPageSlug, "checkout_start", {
+      type: "course",
+      courseId,
+    }).catch(() => undefined);
+  }
+
   if (coursePrice > 0) {
     const newBalance = String(Math.max(0, userBalance - coursePrice));
     await updateUser(session.user.id, { balance: newBalance });
     await createPayment(session.user.id, courseId, coursePrice);
   }
   await createEnrollment(session.user.id, courseId);
+
+  const purchaseEventId = request.headers.get("x-meta-event-id")?.trim() || undefined;
+  await trackMetaCapiServer("Purchase", {
+    eventId: purchaseEventId,
+    request,
+    customData: {
+      content_ids: [courseId],
+      content_type: "product",
+      content_name: "course",
+      value: coursePrice,
+      currency: "EGP",
+      num_items: 1,
+    },
+    userData: {
+      email: session.user.email,
+      externalId: session.user.id,
+      firstName: session.user.name?.split(/\s+/)[0] || session.user.name,
+    },
+  }).catch(() => undefined);
+
+  if (landingPageSlug) {
+    await recordLandingPageEventBySlug(landingPageSlug, "purchase", {
+      type: "course",
+      courseId,
+    }).catch(() => undefined);
+  }
 
   const courseTitle =
     (course as { titleAr?: string; title_ar?: string; title?: string }).titleAr ||

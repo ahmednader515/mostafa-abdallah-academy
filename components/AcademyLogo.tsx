@@ -1,6 +1,6 @@
 export function AcademyLogo({
   className = "h-10 w-10",
-  title = "Mostafa Abdullah academy",
+  title = "WorldWay",
 }: {
   className?: string;
   title?: string;

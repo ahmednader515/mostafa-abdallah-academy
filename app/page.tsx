@@ -30,9 +30,9 @@ export default async function HomePage() {
 
   const firstImage = heroSlides[0]?.image?.trim();
   if (firstImage?.startsWith("/")) {
-    preload(firstImage, { as: "image" });
+    preload(firstImage, { as: "image", fetchPriority: "high" });
   } else {
-    preload("/background.png", { as: "image" });
+    preload("/background.webp", { as: "image", fetchPriority: "high" });
   }
 
   const subscribeHref =

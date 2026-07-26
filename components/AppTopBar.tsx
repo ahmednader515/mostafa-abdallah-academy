@@ -5,13 +5,12 @@ import { useRouter } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import type { UserRole } from "@/lib/types";
-import { AcademyLogo } from "@/components/AcademyLogo";
 import { LanguageToggle } from "@/components/LanguageToggle";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { useT } from "@/components/LocaleProvider";
 import { NotificationsBell } from "@/components/NotificationsBell";
-
-const BRAND_NAME = "Mostafa Abdullah academy";
+import { SiteBrandMark } from "@/components/SiteBrandMark";
+import { MessagesUnreadBadge } from "@/components/MessagesUnreadBadge";
 
 function TopBarUser() {
   const { data: session, status } = useSession();
@@ -120,17 +119,20 @@ export function AppTopBar({
   headerLogoUrl,
   platformSubscriptionExpiryLabel,
   onMenuClick,
+  menuOpen = false,
 }: {
   platformName?: string | null;
   headerLogoUrl?: string | null;
   platformSubscriptionExpiryLabel?: string | null;
   onMenuClick: () => void;
+  menuOpen?: boolean;
 }) {
   const t = useT();
   const router = useRouter();
   const { status } = useSession();
   const [query, setQuery] = useState("");
-  const displayName = platformName?.trim() || BRAND_NAME;
+  void platformName;
+  void headerLogoUrl;
 
   function onSearch(e: FormEvent) {
     e.preventDefault();
@@ -140,34 +142,9 @@ export function AppTopBar({
 
   return (
     <header className="app-topbar sticky top-0 z-30 border-b border-white/5">
-      <div className="flex items-center gap-2 px-3 py-3 sm:gap-4 sm:px-5">
-        <button
-          type="button"
-          onClick={onMenuClick}
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/15 bg-white/5 text-white transition hover:bg-white/10 lg:hidden"
-          aria-label={t("nav.openMenu", "Open menu")}
-        >
-          <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7h16M4 12h16M4 17h16" />
-          </svg>
-        </button>
-
-        <Link href="/" className="flex min-w-0 shrink items-center gap-2">
-          {headerLogoUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={headerLogoUrl}
-              alt=""
-              className="h-9 w-9 shrink-0 rounded-full border border-[#F59E0B]/40 object-cover sm:h-10 sm:w-10"
-            />
-          ) : (
-            <AcademyLogo className="h-9 w-9 shrink-0 sm:h-10 sm:w-10" title={displayName} />
-          )}
-          <span className="min-w-0 truncate text-xs font-semibold tracking-tight text-white sm:text-sm md:text-base">
-            <span className="text-white">Mostafa Abdullah</span>{" "}
-            <span className="text-[#F59E0B]">academy</span>
-          </span>
-        </Link>
+      {/* Fixed LTR chrome so brand + controls stay the same in Arabic and English */}
+      <div className="flex items-center gap-2 px-3 py-3 sm:gap-4 sm:px-5" dir="ltr">
+        <SiteBrandMark />
 
         <form onSubmit={onSearch} className="mx-auto hidden min-w-0 flex-1 max-w-xl md:block">
           <label className="relative block">
@@ -201,10 +178,33 @@ export function AppTopBar({
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M4 6h16v12H4z" />
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="m4 7 8 6 8-6" />
             </svg>
+            <MessagesUnreadBadge />
           </Link>
           <NotificationsBell />
           <TopBarUser />
         </div>
+
+        <button
+          type="button"
+          onClick={onMenuClick}
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/15 bg-white/5 text-white transition hover:bg-white/10"
+          aria-label={
+            menuOpen
+              ? t("nav.closeMenu", "Close menu")
+              : t("nav.openMenu", "Open menu")
+          }
+          aria-expanded={menuOpen}
+        >
+          {menuOpen ? (
+            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18 18 6M6 6l12 12" />
+            </svg>
+          ) : (
+            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7h16M4 12h16M4 17h16" />
+            </svg>
+          )}
+        </button>
       </div>
 
       <div className="flex items-center gap-2 border-t border-white/5 px-3 py-2 md:hidden">

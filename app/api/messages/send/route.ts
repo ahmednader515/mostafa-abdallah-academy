@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { getConversationById, canUserAccessConversation, createMessage } from "@/lib/db";
+import { createNotification } from "@/lib/lms-spec-db";
 import type { UserRole } from "@/lib/types";
 
 /** إرسال رسالة في محادثة */
@@ -49,5 +50,24 @@ export async function POST(request: NextRequest) {
     file_url: type !== "text" ? (body.fileUrl?.trim() || null) : null,
     file_name: type !== "text" ? (body.fileName?.trim() || null) : null,
   });
+
+  try {
+    const recipientId =
+      conversation.staffUserId === session.user.id
+        ? conversation.studentUserId
+        : conversation.staffUserId;
+    if (recipientId) {
+      await createNotification({
+        userId: recipientId,
+        type: "message",
+        title: session.user.name || "رسالة جديدة",
+        body: type === "text" ? (body.content?.trim() || "").slice(0, 180) : "مرفق جديد",
+        link: "/dashboard/messages",
+      });
+    }
+  } catch {
+    /* ignore notification failures */
+  }
+
   return NextResponse.json(message);
 }

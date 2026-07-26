@@ -3,6 +3,8 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { authOptions } from "@/lib/auth";
 import { ensureTeacherHomepageOrderColumn, getTeachersFeatureEnabled, getUsersByRole } from "@/lib/db";
+import { ensureUserExtraColumns } from "@/lib/dashboard-overview";
+import { getEffectivePermissions } from "@/lib/lms-features-db";
 import { getServerTranslator } from "@/lib/i18n/server";
 import { TeachersAdminClient } from "./TeachersAdminClient";
 
@@ -23,19 +25,27 @@ export default async function TeachersAdminPage() {
   let raw: Awaited<ReturnType<typeof getUsersByRole>> = [];
   if (enabled) {
     await ensureTeacherHomepageOrderColumn().catch(() => {});
+    await ensureUserExtraColumns().catch(() => {});
     raw = await getUsersByRole("TEACHER");
   }
-  const initialTeachers = raw.map((u) => ({
-    id: u.id,
-    name: u.name,
-    email: u.email,
-    subject: u.teacher_subject ?? null,
-    avatarUrl: u.teacher_avatar_url ?? null,
-    phone: u.student_number ?? null,
-    homepageOrder: normalizeTeacherHomepageOrder(
-      (u as { teacher_homepage_order?: unknown }).teacher_homepage_order,
-    ),
-  }));
+  const initialTeachers = await Promise.all(
+    raw.map(async (u) => {
+      const permissions = await getEffectivePermissions(u.id, "TEACHER").catch(() => null);
+      return {
+        id: u.id,
+        name: u.name,
+        email: u.email,
+        subject: u.teacher_subject ?? null,
+        avatarUrl: u.teacher_avatar_url ?? null,
+        phone: u.student_number ?? null,
+        homepageOrder: normalizeTeacherHomepageOrder(
+          (u as { teacher_homepage_order?: unknown }).teacher_homepage_order,
+        ),
+        bio: (u as { teacher_bio?: string | null }).teacher_bio ?? null,
+        permissions,
+      };
+    }),
+  );
 
   return (
     <div>

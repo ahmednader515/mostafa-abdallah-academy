@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { OptimizedImage } from "@/components/OptimizedImage";
 
 export type TeacherCardCourse = { id: string; slug: string; title: string };
 
@@ -36,11 +37,13 @@ export function TeacherPublicCard({
       >
         <div className="relative mx-auto aspect-square w-full max-w-[12.5rem] shrink-0 overflow-hidden rounded-xl bg-[var(--color-background)]/40 ring-1 ring-black/10">
           {teacherAvatarUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
+            <OptimizedImage
               src={teacherAvatarUrl}
               alt=""
-              className="h-full w-full object-cover object-center transition duration-500 ease-out group-hover:scale-[1.03]"
+              fill
+              sizes="200px"
+              className="object-cover object-center transition duration-500 ease-out group-hover:scale-[1.03]"
+              quality={70}
             />
           ) : (
             <div className="flex h-full w-full items-center justify-center bg-[var(--color-surface)]">

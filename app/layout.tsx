@@ -12,6 +12,7 @@ import { SiteBrandProvider } from "@/components/SiteBrandProvider";
 import { StoreSplashProvider } from "@/components/StoreSplashProvider";
 import { InspectGuard } from "@/components/InspectGuard";
 import { ForceLogoutGuard } from "@/components/ForceLogoutGuard";
+import { MetaPixelTracker } from "@/components/MetaPixelTracker";
 import { authOptions } from "@/lib/auth";
 import {
   getHomepageSettings,
@@ -33,6 +34,17 @@ import {
   HOMEPAGE_DEFAULT_FOOTER_TITLE_AR,
   HOMEPAGE_DEFAULT_PLATFORM_NAME_AR,
 } from "@/lib/homepage-known-defaults";
+import {
+  BRAND_COPYRIGHT_EN,
+  BRAND_DESCRIPTION_AR,
+  BRAND_DESCRIPTION_EN,
+  BRAND_NAME_EN,
+  BRAND_PAGE_TITLE_AR,
+  BRAND_PAGE_TITLE_EN,
+  BRAND_TAGLINE_EN,
+} from "@/lib/brand";
+import { listEnabledSocialLinks } from "@/lib/lms-spec-db";
+import { parseNavTabs } from "@/lib/nav-tabs";
 
 const cairo = localFont({
   src: [
@@ -46,22 +58,48 @@ const cairo = localFont({
   preload: true,
 });
 
-const BRAND_NAME_EN = "Mostafa Abdullah academy";
-
 export async function generateMetadata(): Promise<Metadata> {
   const locale = await getLocaleFromCookie();
-  const defaultTitle =
-    locale === "ar"
-      ? "Mostafa Abdullah academy | دورات سياحة وضيافة جوية"
-      : "Mostafa Abdullah academy | Tourism & Aviation Training";
-  const defaultDescription =
-    locale === "ar"
-      ? "أكاديمية متخصصة في السياحة والسفر والضيافة الجوية"
-      : "Specialized academy for tourism, travel, and aviation hospitality";
+  const defaultTitle = locale === "ar" ? BRAND_PAGE_TITLE_AR : BRAND_PAGE_TITLE_EN;
+  const defaultDescription = locale === "ar" ? BRAND_DESCRIPTION_AR : BRAND_DESCRIPTION_EN;
   try {
-    const settings = await getHomepageSettings();
+    const [settings, brand] = await Promise.all([
+      getHomepageSettings(),
+      getBrandAndAnalyticsSettingsCached().catch(() => null),
+    ]);
     const title = pickLocalizedText(locale, settings.pageTitle, settings.pageTitleEn) || defaultTitle;
-    return { title, description: defaultDescription };
+    const description =
+      pickLocalizedText(locale, settings.seoDescription, settings.seoDescriptionEn) ||
+      defaultDescription;
+    // Always route icons through /api/favicon so static app/favicon.* cannot override admin branding.
+    // Cache-bust when the configured URL changes (browsers cache /favicon.ico aggressively).
+    const faviconVersion = brand?.faviconUrl?.trim()
+      ? Buffer.from(brand.faviconUrl.trim()).toString("base64url").slice(0, 24)
+      : "default";
+    const faviconHref = `/api/favicon?v=${faviconVersion}`;
+    return {
+      title,
+      description,
+      metadataBase: new URL(
+        process.env.NEXT_PUBLIC_PRIMARY_DOMAIN?.startsWith("http")
+          ? process.env.NEXT_PUBLIC_PRIMARY_DOMAIN
+          : process.env.NEXT_PUBLIC_PRIMARY_DOMAIN
+            ? `https://${process.env.NEXT_PUBLIC_PRIMARY_DOMAIN}`
+            : process.env.NEXTAUTH_URL || "http://localhost:3000",
+      ),
+      openGraph: {
+        title,
+        description,
+        siteName: BRAND_NAME_EN,
+        locale: locale === "ar" ? "ar_EG" : "en_US",
+        type: "website",
+      },
+      icons: {
+        icon: [{ url: faviconHref }],
+        shortcut: faviconHref,
+        apple: [{ url: `/api/favicon?variant=apple&v=${faviconVersion}` }],
+      },
+    };
   } catch {
     return { title: defaultTitle, description: defaultDescription };
   }
@@ -95,21 +133,6 @@ export default async function RootLayout({
       (locale === "en" ? BRAND_NAME_EN : HOMEPAGE_DEFAULT_PLATFORM_NAME_AR);
     headerLogoUrl = settings.headerLogoUrl ?? null;
     platformPrimaryColor = normalizeHeroHex(String(settings.primaryColor ?? "")) ?? null;
-    const supportPairs: Array<{
-      href: string | null | undefined;
-      network: SidebarSocialLink["network"];
-      label: string;
-    }> = [
-      { href: settings.whatsappUrl, network: "whatsapp", label: "WhatsApp" },
-      { href: settings.facebookUrl, network: "facebook", label: "Facebook" },
-      { href: settings.telegramUrl, network: "telegram", label: "Telegram" },
-      { href: settings.youtubeUrl, network: "youtube", label: "YouTube" },
-      { href: settings.linkedinUrl, network: "linkedin", label: "LinkedIn" },
-    ];
-    for (const p of supportPairs) {
-      const href = p.href?.trim();
-      if (href) socialLinks.push({ href, network: p.network, label: p.label });
-    }
     const rawFooterTitle = pickLocalizedText(locale, settings.footerTitle, settings.footerTitleEn);
     const rawFooterTagline = pickLocalizedText(locale, settings.footerTagline, settings.footerTaglineEn);
     const rawFooterCopyright = pickLocalizedText(locale, settings.footerCopyright, settings.footerCopyrightEn);
@@ -127,7 +150,7 @@ export default async function RootLayout({
       HOMEPAGE_DEFAULT_FOOTER_TAGLINE_AR,
       "footer.defaultTagline",
       t,
-      "Learn from the best in tourism and aviation hospitality",
+      BRAND_TAGLINE_EN,
     );
     footerCopyright = homepageDefaultForLocale(
       locale,
@@ -135,10 +158,68 @@ export default async function RootLayout({
       HOMEPAGE_DEFAULT_FOOTER_COPYRIGHT_AR,
       "footer.defaultCopyright",
       t,
-      "Mostafa Abdullah academy. All rights reserved.",
+      BRAND_COPYRIGHT_EN,
     );
   } else {
     platformName = locale === "en" ? BRAND_NAME_EN : HOMEPAGE_DEFAULT_PLATFORM_NAME_AR;
+  }
+
+  try {
+    const enabledSocial = await listEnabledSocialLinks();
+    const networkMap: Record<string, SidebarSocialLink["network"]> = {
+      whatsapp: "whatsapp",
+      facebook: "facebook",
+      telegram: "telegram",
+      youtube: "youtube",
+      linkedin: "linkedin",
+      instagram: "instagram",
+      tiktok: "tiktok",
+      x: "x",
+      twitter: "x",
+    };
+    for (const link of enabledSocial) {
+      const network = networkMap[String(link.network || "").toLowerCase()];
+      const href = link.url?.trim();
+      if (!network || !href) continue;
+      socialLinks.push({
+        href,
+        network,
+        label:
+          pickLocalizedText(locale, link.label, link.labelEn) ||
+          network.charAt(0).toUpperCase() + network.slice(1),
+      });
+    }
+  } catch {
+    /* fall through to homepage URLs */
+  }
+
+  if (homepageSettingsResult) {
+    const settings = homepageSettingsResult;
+    const supportPairs: Array<{
+      href: string | null | undefined;
+      network: SidebarSocialLink["network"];
+      label: string;
+    }> = [
+      { href: settings.whatsappUrl, network: "whatsapp", label: "WhatsApp" },
+      { href: settings.facebookUrl, network: "facebook", label: "Facebook" },
+      { href: settings.telegramUrl, network: "telegram", label: "Telegram" },
+      { href: settings.youtubeUrl, network: "youtube", label: "YouTube" },
+      { href: settings.linkedinUrl, network: "linkedin", label: "LinkedIn" },
+      { href: settings.teamWhatsappUrl, network: "whatsapp", label: "WhatsApp" },
+      { href: settings.teamFacebookUrl, network: "facebook", label: "Facebook" },
+      { href: settings.teamTelegramUrl, network: "telegram", label: "Telegram" },
+      { href: settings.teamYoutubeUrl, network: "youtube", label: "YouTube" },
+      { href: settings.teamLinkedinUrl, network: "linkedin", label: "LinkedIn" },
+    ];
+    const seen = new Set(socialLinks.map((l) => l.href.toLowerCase()));
+    for (const p of supportPairs) {
+      const href = p.href?.trim();
+      if (!href) continue;
+      const key = href.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      socialLinks.push({ href, network: p.network, label: p.label });
+    }
   }
 
   let platformSubscriptionExpiryLabel: string | null = null;
@@ -204,7 +285,22 @@ export default async function RootLayout({
             }}
           />
         ) : null}
-        {brandFaviconUrl ? <link rel="icon" href={brandFaviconUrl} /> : null}
+        <link
+          rel="icon"
+          href={
+            brandFaviconUrl
+              ? `/api/favicon?v=${Buffer.from(brandFaviconUrl).toString("base64url").slice(0, 24)}`
+              : "/api/favicon?v=default"
+          }
+        />
+        <link
+          rel="apple-touch-icon"
+          href={
+            brandFaviconUrl
+              ? `/api/favicon?variant=apple&v=${Buffer.from(brandFaviconUrl).toString("base64url").slice(0, 24)}`
+              : "/api/favicon?variant=apple&v=default"
+          }
+        />
       </head>
       <body className={`${cairo.variable} ${cairo.className} font-sans antialiased min-h-screen`}>
         {gtmId ? (
@@ -234,9 +330,23 @@ export default async function RootLayout({
           </>
         ) : null}
         {facebookPixelId ? (
-          <Script id="facebook-pixel" strategy="lazyOnload">
-            {`!function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window, document,'script','https://connect.facebook.net/en_US/fbevents.js');fbq('init', '${facebookPixelId}');fbq('track', 'PageView');`}
-          </Script>
+          <>
+            <Script id="facebook-pixel" strategy="afterInteractive">
+              {`!function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window, document,'script','https://connect.facebook.net/en_US/fbevents.js');
+fbq('set','autoConfig',false,'${facebookPixelId}');
+fbq('init','${facebookPixelId}');`}
+            </Script>
+            <noscript>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                height="1"
+                width="1"
+                style={{ display: "none" }}
+                src={`https://www.facebook.com/tr?id=${encodeURIComponent(facebookPixelId)}&ev=PageView&noscript=1`}
+                alt=""
+              />
+            </noscript>
+          </>
         ) : null}
         <NextTopLoader
           color={platformPrimaryColor ?? "#2563EB"}
@@ -249,16 +359,25 @@ export default async function RootLayout({
         <LocaleProvider locale={locale}>
           <LabelsProvider initialLabels={platformLabels}>
             <CurrencyProvider>
-              <SiteBrandProvider platformName={platformName} headerLogoUrl={headerLogoUrl}>
+              <SiteBrandProvider
+                platformName={platformName}
+                headerLogoUrl={headerLogoUrl}
+                platformNameColor={homepageSettingsResult?.platformNameColor ?? "#FFFFFF"}
+                platformNameColor2={homepageSettingsResult?.platformNameColor2 ?? null}
+                showPlatformName={homepageSettingsResult?.showPlatformName !== false}
+                showPlatformLogo={homepageSettingsResult?.showPlatformLogo !== false}
+              >
                 <SessionProvider>
                   <StoreSplashProvider>
                     <InspectGuard />
                     <ForceLogoutGuard />
+                    <MetaPixelTracker enabled={Boolean(facebookPixelId)} />
                     <AppShell
                       platformName={platformName}
                       headerLogoUrl={headerLogoUrl}
                       platformSubscriptionExpiryLabel={platformSubscriptionExpiryLabel}
                       socialLinks={socialLinks}
+                      navTabs={parseNavTabs(homepageSettingsResult?.navTabsJson)}
                       footer={
                         <Footer
                           footerTitle={footerTitle}

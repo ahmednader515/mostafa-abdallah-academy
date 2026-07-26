@@ -24,6 +24,10 @@ type Student = {
   balance: number;
   student_number?: string | null;
   copyright_code?: string | null;
+  isSuspended?: boolean;
+  createdAt?: string;
+  lastLoginAt?: string | null;
+  currentSubscription?: string | null;
   _count: { enrollments: number };
   enrollments: Enrollment[];
 };
@@ -202,6 +206,32 @@ export function StudentsList({
     });
   }
 
+  async function handleToggleSuspend(s: Student) {
+    setLoading(true);
+    setError("");
+    const res = await fetch(`/api/dashboard/students/${s.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ is_suspended: !s.isSuspended }),
+    });
+    setLoading(false);
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      setError(data.error ?? t("dashboard.studentsPage.errorUpdateFailed", "Update failed"));
+      return;
+    }
+    router.refresh();
+  }
+
+  function formatDate(iso?: string | null) {
+    if (!iso) return dash;
+    try {
+      return new Date(iso).toLocaleString();
+    } catch {
+      return iso;
+    }
+  }
+
   return (
     <div>
       <div className="mb-4">
@@ -223,23 +253,27 @@ export function StudentsList({
           className="mt-1 w-full max-w-md rounded-[var(--radius-btn)] border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2"
         />
       </div>
+      {error ? <p className="mb-3 text-sm text-red-600">{error}</p> : null}
       <div className="overflow-x-auto rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)]">
         <table dir={dir} className="w-full">
           <thead>
             <tr className="border-b border-[var(--color-border)] bg-[var(--color-background)]/50">
               <th className={thClass}>{t("dashboard.studentsPage.colName", "Name")}</th>
               <th className={thClass}>{t("dashboard.studentsPage.colEmail", "Email")}</th>
-              <th className={thClass}>{t("dashboard.studentsPage.colStudentNumber", "Student number")}</th>
-              <th className={thClass}>{t("dashboard.studentsPage.colCopyright", "Copyright code")}</th>
-              <th className={thClass}>{t("dashboard.studentsPage.colBalance", "Balance")}</th>
+              <th className={thClass}>{t("dashboard.studentsPage.colStudentNumber", "Phone")}</th>
               <th className={thClass}>{t("dashboard.studentsPage.colCourses", "Courses")}</th>
+              <th className={thClass}>{t("dashboard.studentsPage.colSubscription", "Subscription")}</th>
+              <th className={thClass}>{t("dashboard.studentsPage.colRegistered", "Registered")}</th>
+              <th className={thClass}>{t("dashboard.studentsPage.colLastLogin", "Last login")}</th>
+              <th className={thClass}>{t("dashboard.studentsPage.colStatus", "Status")}</th>
+              <th className={thClass}>{t("dashboard.studentsPage.colBalance", "Balance")}</th>
               {canAddBalance && (
                 <th className={thClass}>{t("dashboard.studentsPage.colAddBalance", "Add balance")}</th>
               )}
               {canManageEnrollments && (
                 <th className={thClass}>{t("dashboard.studentsPage.colManageCourses", "Manage courses")}</th>
               )}
-              <th className={thClass}>{t("dashboard.studentsPage.colEdit", "Edit")}</th>
+              <th className={thClass}>{t("dashboard.studentsPage.colActions", "Actions")}</th>
             </tr>
           </thead>
           <tbody>
@@ -250,13 +284,26 @@ export function StudentsList({
                 <td className="p-3 text-[var(--color-foreground)]">
                   <DisplayPhoneNumber value={s.student_number} fallback={dash} />
                 </td>
-                <td className="p-3 font-mono text-sm text-[var(--color-foreground)]">
-                  {s.copyright_code ?? dash}
+                <td className="p-3">{s._count.enrollments}</td>
+                <td className="p-3 text-sm text-[var(--color-muted)]">{s.currentSubscription ?? dash}</td>
+                <td className="p-3 text-xs text-[var(--color-muted)]">{formatDate(s.createdAt)}</td>
+                <td className="p-3 text-xs text-[var(--color-muted)]">{formatDate(s.lastLoginAt)}</td>
+                <td className="p-3">
+                  <span
+                    className={
+                      s.isSuspended
+                        ? "rounded px-2 py-0.5 text-xs font-medium bg-red-100 text-red-700"
+                        : "rounded px-2 py-0.5 text-xs font-medium bg-emerald-100 text-emerald-700"
+                    }
+                  >
+                    {s.isSuspended
+                      ? t("dashboard.studentsPage.statusSuspended", "Suspended")
+                      : t("dashboard.studentsPage.statusActive", "Active")}
+                  </span>
                 </td>
                 <td className="p-3">
                   {Number(s.balance).toFixed(2)} {egp}
                 </td>
-                <td className="p-3">{s._count.enrollments}</td>
                 {canAddBalance && (
                   <td className="p-3">
                     <AddBalanceButton studentId={s.id} studentName={s.name} />
@@ -274,13 +321,25 @@ export function StudentsList({
                   </td>
                 )}
                 <td className="p-3">
-                  <button
-                    type="button"
-                    onClick={() => openEdit(s)}
-                    className="text-sm font-medium text-[var(--color-primary)] hover:underline"
-                  >
-                    {t("dashboard.studentsPage.edit", "Edit")}
-                  </button>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => openEdit(s)}
+                      className="text-sm font-medium text-[var(--color-primary)] hover:underline"
+                    >
+                      {t("dashboard.studentsPage.edit", "Edit")}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={loading}
+                      onClick={() => handleToggleSuspend(s)}
+                      className="text-sm font-medium text-red-600 hover:underline disabled:opacity-50"
+                    >
+                      {s.isSuspended
+                        ? t("dashboard.studentsPage.unsuspend", "Unsuspend")
+                        : t("dashboard.studentsPage.suspend", "Suspend")}
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}

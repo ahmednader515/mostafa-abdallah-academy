@@ -4,6 +4,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useCurrency } from "@/components/CurrencyProvider";
+import { OptimizedImage } from "@/components/OptimizedImage";
+import { useLocale, useT } from "@/components/LocaleProvider";
+import { newAnalyticsEventId, trackMetaEvent } from "@/lib/analytics-events";
 
 export type SubscriptionPlanCardData = {
   id: string;
@@ -14,24 +17,20 @@ export type SubscriptionPlanCardData = {
   price: number;
 };
 
-const TEAL = "#2563EB";
-const GOLD = "#F59E0B";
-const SURFACE = "#0b111e";
-
-function durationLabel(kind: string): string {
-  if (kind === "week") return "أسبوع";
-  if (kind === "month") return "شهر";
-  if (kind === "year") return "سنة";
+function durationLabel(kind: string, t: (key: string, fallback: string) => string): string {
+  if (kind === "week") return t("subscriptions.durationWeek", "Week");
+  if (kind === "month") return t("subscriptions.durationMonth", "Month");
+  if (kind === "year") return t("subscriptions.durationYear", "Year");
   return kind;
 }
 
 const ADD_BALANCE_HREF = "/dashboard/add-balance";
 
-function formatRenewalDate(iso: string): string {
+function formatRenewalDate(iso: string, locale: string): string {
   try {
     const d = new Date(iso);
     if (Number.isNaN(d.getTime())) return iso;
-    return new Intl.DateTimeFormat("ar-EG", {
+    return new Intl.DateTimeFormat(locale === "en" ? "en-US" : "ar-EG", {
       weekday: "long",
       year: "numeric",
       month: "long",
@@ -54,23 +53,22 @@ export function SubscriptionPlanCard({
   plan: SubscriptionPlanCardData;
   isStudent: boolean;
   isLoggedIn: boolean;
-  /** للطالب: هل لديه اشتراك منصة نشط (أي باقة) */
   hasActivePlatformSubscription?: boolean;
-  /** تاريخ انتهاء الاشتراك النشط (ISO) */
   activePlatformSubscriptionExpiresAtIso?: string | null;
 }) {
   const router = useRouter();
+  const t = useT();
+  const locale = useLocale();
   const { formatPriceParts } = useCurrency();
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
   const [infoMessage, setInfoMessage] = useState("");
   const [showAddBalanceLink, setShowAddBalanceLink] = useState(false);
-  /** تاريخ انتهاء الاشتراك بعد نجاح الشراء (ISO) */
   const [successExpiresAt, setSuccessExpiresAt] = useState<string | null>(null);
 
   const activeSubExpiryFormatted =
     hasActivePlatformSubscription && activePlatformSubscriptionExpiresAtIso
-      ? formatRenewalDate(activePlatformSubscriptionExpiresAtIso)
+      ? formatRenewalDate(activePlatformSubscriptionExpiresAtIso, locale)
       : null;
 
   async function purchase() {
@@ -80,20 +78,38 @@ export function SubscriptionPlanCard({
     setSuccessExpiresAt(null);
     if (isStudent && hasActivePlatformSubscription) {
       const line = activeSubExpiryFormatted
-        ? `اشتراكك في المنصة نشط حتى ${activeSubExpiryFormatted}. `
-        : "لديك اشتراك منصة نشط. ";
+        ? t(
+            "subscriptions.activeUntil",
+            "Your platform subscription is active until {date}. ",
+          ).replace("{date}", activeSubExpiryFormatted)
+        : t("subscriptions.alreadyActive", "You already have an active platform subscription. ");
       setInfoMessage(
-        `${line}لا تحتاج لدفع مرة أخرى؛ يمكنك تجديد أو شراء باقة جديدة بعد انتهاء هذه المدة فقط.`,
+        `${line}${t(
+          "subscriptions.noRepurchase",
+          "You do not need to pay again until that period ends.",
+        )}`,
       );
       return;
     }
     setLoading(true);
     try {
+      trackMetaEvent("InitiateCheckout", {
+        content_ids: [plan.id],
+        content_type: "product",
+        content_name: plan.name,
+        value: Number(plan.price),
+        currency: "EGP",
+        num_items: 1,
+      });
+      const purchaseEventId = newAnalyticsEventId();
       const res = await fetch("/api/subscriptions/purchase", {
         method: "POST",
         credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ planId: plan.id }),
+        headers: {
+          "Content-Type": "application/json",
+          "x-meta-event-id": purchaseEventId,
+        },
+        body: JSON.stringify({ planId: plan.id, metaEventId: purchaseEventId }),
       });
       let data: {
         success?: boolean;
@@ -111,22 +127,42 @@ export function SubscriptionPlanCard({
         if (data.alreadySubscribed && typeof data.error === "string") {
           setInfoMessage(data.error);
         } else {
-          setErr(typeof data.error === "string" ? data.error : "تعذر إتمام الشراء");
+          setErr(
+            typeof data.error === "string"
+              ? data.error
+              : t("subscriptions.purchaseFailed", "Could not complete purchase"),
+          );
           setShowAddBalanceLink(!!data.insufficientBalance);
         }
         return;
       }
       if (typeof data.expiresAt !== "string" || !data.expiresAt.trim()) {
         setErr(
-          "تم تنفيذ الطلب لكن لم يُرجع الخادم تاريخ انتهاء الاشتراك. إن خُصم من رصيدك، راجع لوحة التحكم أو أعد تحميل الصفحة.",
+          t(
+            "subscriptions.missingExpiry",
+            "Request completed but expiry date was not returned. Refresh the page or check the dashboard.",
+          ),
         );
         router.refresh();
         return;
       }
+      trackMetaEvent(
+        "Purchase",
+        {
+          content_ids: [plan.id],
+          content_type: "product",
+          content_name: plan.name,
+          value: Number(plan.price),
+          currency: "EGP",
+          num_items: 1,
+          order_id: purchaseEventId,
+        },
+        { eventId: purchaseEventId },
+      );
       setSuccessExpiresAt(data.expiresAt.trim());
       router.refresh();
     } catch {
-      setErr("تعذر الاتصال بالخادم. تحقق من الشبكة ثم أعد المحاولة.");
+      setErr(t("subscriptions.networkError", "Could not reach the server. Check your connection."));
     } finally {
       setLoading(false);
     }
@@ -136,57 +172,49 @@ export function SubscriptionPlanCard({
   const loginHref = `/login?callbackUrl=${encodeURIComponent("/")}`;
 
   return (
-    <article
-      className="subscription-plan-card mx-auto flex max-w-sm flex-col overflow-hidden rounded-2xl shadow-xl ring-1 ring-white/10"
-      style={{ background: SURFACE }}
-      dir="rtl"
-    >
-      {/* منطقة الصورة */}
-      <div className="relative aspect-[16/10] w-full shrink-0 overflow-hidden bg-gradient-to-br from-slate-800 to-slate-900">
+    <article className="subscription-plan-card mx-auto flex max-w-sm flex-col overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-[var(--shadow-card)]">
+      <div className="relative aspect-[16/10] w-full shrink-0 overflow-hidden bg-gradient-to-br from-[var(--color-primary)]/15 to-[var(--color-border)]">
         {plan.imageUrl ? (
-          <img src={plan.imageUrl} alt="" className="h-full w-full object-cover" />
+          <OptimizedImage
+            src={plan.imageUrl}
+            alt=""
+            fill
+            sizes="(max-width: 640px) 90vw, 384px"
+            className="object-cover"
+            quality={70}
+          />
         ) : null}
         {isStudent && hasActivePlatformSubscription ? (
-          <div
-            className="pointer-events-none absolute left-3 top-3 z-[1] rounded-full border border-emerald-400/50 bg-emerald-600/90 px-3 py-1 text-center text-[11px] font-bold text-white shadow-md sm:text-xs"
-            aria-hidden
-          >
-            مشترك
+          <div className="pointer-events-none absolute start-3 top-3 z-[1] rounded-full border border-emerald-500/40 bg-emerald-600 px-3 py-1 text-center text-[11px] font-bold text-white shadow-md sm:text-xs">
+            {t("subscriptions.badgeActive", "Subscribed")}
           </div>
         ) : null}
-        <div
-          className="pointer-events-none absolute right-0 top-0 z-[1] origin-top-right translate-x-1/4 -translate-y-1/4 rotate-45 bg-fuchsia-500 px-10 py-1 text-center text-[10px] font-bold uppercase tracking-wide text-white shadow-md"
-          aria-hidden
-        >
-          اشتراك
+        <div className="pointer-events-none absolute end-0 top-0 z-[1] origin-top-end translate-x-1/4 -translate-y-1/4 rotate-45 bg-[var(--color-primary)] px-10 py-1 text-center text-[10px] font-bold uppercase tracking-wide text-white shadow-md rtl:-translate-x-1/4 rtl:rotate-[-45deg]">
+          {t("subscriptions.badge", "Plan")}
         </div>
       </div>
 
-      {/* جسم الكارت — يتداخل مع الصورة */}
-      <div
-        className="relative z-[2] -mt-8 rounded-t-3xl border border-white/10 px-5 pb-6 pt-12 sm:px-6 sm:pt-14"
-        style={{ background: SURFACE }}
-      >
-        <div
-          className="absolute left-1/2 top-0 z-[3] -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-full border-2 border-amber-500/50 bg-gradient-to-b from-amber-500 to-amber-600 px-6 py-2.5 text-sm font-bold text-white shadow-lg sm:px-8 sm:py-3 sm:text-base"
-        >
-          {durationLabel(plan.durationKind)}
+      <div className="relative z-[2] -mt-8 rounded-t-3xl border border-[var(--color-border)] bg-[var(--color-surface)] px-5 pb-6 pt-12 sm:px-6 sm:pt-14">
+        <div className="absolute left-1/2 top-0 z-[3] -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-full border-2 border-amber-500/40 bg-gradient-to-b from-amber-500 to-amber-600 px-6 py-2.5 text-sm font-bold text-white shadow-lg sm:px-8 sm:py-3 sm:text-base">
+          {durationLabel(plan.durationKind, t)}
         </div>
 
         <div className="flex flex-row items-start justify-between gap-3">
           <div className="flex min-w-0 flex-1 flex-col gap-2">
-            <h3 className="text-right text-xl font-bold leading-snug text-white">{plan.name}</h3>
+            <h3 className="text-start text-xl font-bold leading-snug text-[var(--color-foreground)]">
+              {plan.name}
+            </h3>
             {isStudent && hasActivePlatformSubscription ? (
-              <p className="text-right text-xs leading-relaxed text-emerald-300/95">
-                {activeSubExpiryFormatted ? (
-                  <>
-                    أنت مشترك في اشتراك المنصة حتى{" "}
-                    <span className="font-semibold text-emerald-100">{activeSubExpiryFormatted}</span>
-                    . لا يلزم دفع هذه الباقة مرة أخرى قبل انتهاء المدة.
-                  </>
-                ) : (
-                  <>أنت مشترك في اشتراك المنصة. لا يلزم دفع هذه الباقة مرة أخرى قبل انتهاء المدة الحالية.</>
-                )}
+              <p className="text-start text-xs leading-relaxed text-emerald-700 dark:text-emerald-300">
+                {activeSubExpiryFormatted
+                  ? t(
+                      "subscriptions.activeDetailUntil",
+                      "You are subscribed until {date}. No need to buy this plan again before it ends.",
+                    ).replace("{date}", activeSubExpiryFormatted)
+                  : t(
+                      "subscriptions.activeDetail",
+                      "You are subscribed. No need to buy this plan again before the current period ends.",
+                    )}
               </p>
             ) : null}
           </div>
@@ -194,18 +222,16 @@ export function SubscriptionPlanCard({
             {isStudent ? (
               <Link
                 href="/courses"
-                className="rounded-xl border-2 px-3 py-2 text-center text-xs font-semibold text-white transition hover:bg-white/5"
-                style={{ borderColor: TEAL }}
+                className="rounded-xl border-2 border-[var(--color-primary)] px-3 py-2 text-center text-xs font-semibold text-[var(--color-primary)] transition hover:bg-[var(--color-primary)]/5"
               >
-                الكورسات
+                {t("common.courses", "Courses")}
               </Link>
             ) : (
               <Link
                 href={loginHref}
-                className="rounded-xl border-2 px-3 py-2 text-center text-xs font-semibold text-white transition hover:bg-white/5"
-                style={{ borderColor: TEAL }}
+                className="rounded-xl border-2 border-[var(--color-primary)] px-3 py-2 text-center text-xs font-semibold text-[var(--color-primary)] transition hover:bg-[var(--color-primary)]/5"
               >
-                تسجيل الدخول
+                {t("header.login", "Log in")}
               </Link>
             )}
             {isStudent ? (
@@ -215,107 +241,100 @@ export function SubscriptionPlanCard({
                 disabled={loading}
                 className={`min-w-[9.5rem] rounded-xl px-5 py-3.5 text-center text-sm font-bold shadow-lg transition sm:min-w-[10.5rem] sm:px-6 sm:py-4 sm:text-base ${
                   hasActivePlatformSubscription
-                    ? "border border-emerald-400/40 bg-emerald-900/40 text-emerald-100 hover:bg-emerald-900/55"
-                    : "text-white hover:opacity-90 disabled:opacity-50"
+                    ? "border border-emerald-500/40 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 dark:bg-emerald-950/50 dark:text-emerald-100"
+                    : "bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50"
                 }`}
-                style={hasActivePlatformSubscription ? undefined : { backgroundColor: GOLD }}
               >
                 {loading
-                  ? "جاري الشراء…"
+                  ? t("subscriptions.buying", "Purchasing…")
                   : hasActivePlatformSubscription
-                    ? "أنت مشترك — التفاصيل"
-                    : "اشتر الآن"}
+                    ? t("subscriptions.youAreSubscribed", "Subscribed — details")
+                    : t("subscriptions.buyNow", "Buy now")}
               </button>
             ) : isLoggedIn ? (
-              <span className="rounded-xl bg-white/10 px-3 py-2 text-center text-[10px] text-neutral-400">
-                للطلاب فقط
+              <span className="rounded-xl bg-[var(--color-border)]/60 px-3 py-2 text-center text-[10px] text-[var(--color-muted)]">
+                {t("subscriptions.studentsOnly", "Students only")}
               </span>
             ) : (
               <Link
                 href={loginHref}
-                className="rounded-xl px-3 py-2 text-center text-xs font-semibold text-white shadow-md transition hover:opacity-90"
-                style={{ backgroundColor: GOLD }}
+                className="rounded-xl bg-amber-500 px-3 py-2 text-center text-xs font-semibold text-white shadow-md transition hover:bg-amber-600"
               >
-                اشتر كطالب
+                {t("subscriptions.buyAsStudent", "Buy as student")}
               </Link>
             )}
           </div>
         </div>
 
         <div className="my-4 space-y-2">
-          <div className="h-px w-full opacity-80" style={{ backgroundColor: TEAL }} />
-          <div className="h-px w-full bg-white/10" />
+          <div className="h-px w-full bg-[var(--color-primary)]/70" />
+          <div className="h-px w-full bg-[var(--color-border)]" />
         </div>
 
         {plan.description?.trim() ? (
-          <p className="text-right text-sm leading-relaxed text-neutral-400">{plan.description.trim()}</p>
+          <p className="text-start text-sm leading-relaxed text-[var(--color-muted)]">
+            {plan.description.trim()}
+          </p>
         ) : (
-          <p className="text-right text-sm text-neutral-500">وصول لجميع الكورسات المدفوعة المنشورة طوال مدة الاشتراك.</p>
+          <p className="text-start text-sm text-[var(--color-muted)]">
+            {t(
+              "subscriptions.defaultDescription",
+              "Access all published paid courses for the full subscription period.",
+            )}
+          </p>
         )}
 
-        <div className="mt-6 flex flex-row items-end justify-between gap-3 border-t border-white/10 pt-4">
-          <div className="space-y-1 text-right text-xs text-neutral-400">
-            <p className="flex items-center justify-end gap-1.5">
-              <span>وصول شامل للمدفوع</span>
-              <span className="text-neutral-500" aria-hidden>
-                ◷
-              </span>
-            </p>
-            <p className="flex items-center justify-end gap-1.5">
-              <span>جميع الأقسام</span>
-              <span className="text-neutral-500" aria-hidden>
-                ▤
-              </span>
-            </p>
+        <div className="mt-6 flex flex-row items-end justify-between gap-3 border-t border-[var(--color-border)] pt-4">
+          <div className="space-y-1 text-start text-xs text-[var(--color-muted)]">
+            <p>{t("subscriptions.perkPaidAccess", "Full paid-course access")}</p>
+            <p>{t("subscriptions.perkAllSections", "All sections")}</p>
           </div>
-          <div
-            className="flex shrink-0 items-stretch overflow-hidden rounded-lg text-sm font-bold shadow-md ring-1 ring-white/10"
-            style={{ backgroundColor: TEAL }}
-          >
-            <span className="flex items-center px-2.5 py-2 text-[10px] font-bold uppercase text-white">{priceCode}</span>
-            <span className="flex items-center bg-black px-3 py-2 text-white tabular-nums">{priceAmount}</span>
+          <div className="flex shrink-0 items-stretch overflow-hidden rounded-lg text-sm font-bold shadow-md ring-1 ring-[var(--color-border)]">
+            <span className="flex items-center bg-[var(--color-primary)] px-2.5 py-2 text-[10px] font-bold uppercase text-white">
+              {priceCode}
+            </span>
+            <span className="flex items-center bg-[var(--color-foreground)] px-3 py-2 text-[var(--color-surface)] tabular-nums">
+              {priceAmount}
+            </span>
           </div>
         </div>
 
         {infoMessage ? (
-          <div className="mt-4 rounded-xl border border-amber-500/45 bg-amber-950/35 p-3 text-center text-sm leading-relaxed text-amber-100">
+          <div className="mt-4 rounded-xl border border-amber-500/40 bg-amber-50 p-3 text-center text-sm leading-relaxed text-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
             {infoMessage}
           </div>
         ) : null}
 
         {successExpiresAt ? (
           <div
-            className="mt-4 space-y-2 rounded-xl border border-emerald-500/45 bg-emerald-950/40 p-4 text-center"
+            className="mt-4 space-y-2 rounded-xl border border-emerald-500/40 bg-emerald-50 p-4 text-center dark:bg-emerald-950/40"
             role="status"
           >
-            <p className="text-base font-bold text-emerald-200">تم الاشتراك بنجاح</p>
-            <p className="text-sm leading-relaxed text-emerald-100/95">
-              موعد انتهاء اشتراكك الحالي (وبداية دورة التجديد التالية إن رغبت بالتمديد):{" "}
-              <span className="block pt-1 font-semibold text-white sm:inline sm:pt-0">
-                {formatRenewalDate(successExpiresAt)}
-              </span>
+            <p className="text-base font-bold text-emerald-800 dark:text-emerald-200">
+              {t("subscriptions.successTitle", "Subscription successful")}
             </p>
-            <p className="text-xs leading-relaxed text-emerald-200/85">
-              يمكنك الآن فتح جميع الكورسات المدفوعة المنشورة في المنصة دون شراء كل كورس على حدة حتى هذا التاريخ.
+            <p className="text-sm leading-relaxed text-emerald-900/90 dark:text-emerald-100/95">
+              {t("subscriptions.successExpiry", "Current subscription ends:")}{" "}
+              <span className="font-semibold">{formatRenewalDate(successExpiresAt, locale)}</span>
             </p>
             <Link
               href="/courses"
-              className="mt-2 inline-flex items-center justify-center rounded-xl bg-teal-500 px-4 py-2.5 text-sm font-semibold text-white shadow hover:bg-teal-400"
+              className="mt-2 inline-flex items-center justify-center rounded-xl bg-[var(--color-primary)] px-4 py-2.5 text-sm font-semibold text-white shadow hover:opacity-90"
             >
-              الانتقال إلى الكورسات
+              {t("subscriptions.goToCourses", "Go to courses")}
             </Link>
           </div>
         ) : null}
 
         {err ? (
           <div className="mt-4 space-y-2 text-center">
-            <p className="text-sm text-red-400">{err}</p>
+            <p className="text-sm text-red-600 dark:text-red-400">{err}</p>
             {showAddBalanceLink ? (
               <Link
                 href={ADD_BALANCE_HREF}
-                className="inline-flex items-center justify-center rounded-xl border border-teal-400/50 bg-teal-500/15 px-4 py-2.5 text-sm font-semibold text-teal-300 transition hover:bg-teal-500/25"
+                className="inline-flex items-center justify-center rounded-xl border border-[var(--color-primary)]/50 bg-[var(--color-primary)]/10 px-4 py-2.5 text-sm font-semibold text-[var(--color-primary)] transition hover:bg-[var(--color-primary)]/15"
               >
-                إضافة رصيد في حسابك
+                {t("subscriptions.addBalance", "Add balance to your account")}
               </Link>
             ) : null}
           </div>

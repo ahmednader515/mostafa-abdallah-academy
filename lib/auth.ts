@@ -42,12 +42,32 @@ export const authOptions: NextAuthOptions = {
         if (!user) return null;
         const ok = await compare(credentials.password, user.password_hash);
         if (!ok) return null;
+        const suspended = Boolean(
+          (user as { is_suspended?: boolean }).is_suspended ??
+            (user as { isSuspended?: boolean }).isSuspended,
+        );
+        if (suspended) {
+          throw new Error("ACCOUNT_SUSPENDED");
+        }
         const existingSessionId = await getCurrentSessionId(user.id);
         if (existingSessionId != null && existingSessionId !== "") {
           throw new Error(CONCURRENT_SESSION_ERROR);
         }
         const sessionId = randomUUID();
         await setCurrentSessionId(user.id, sessionId);
+        try {
+          const { updateUser } = await import("@/lib/db");
+          await updateUser(user.id, { last_login_at: new Date() });
+          const { recordUserLogin } = await import("@/lib/admin-security-db");
+          await recordUserLogin({
+            userId: user.id,
+            email: user.email,
+            ip: null,
+            userAgent: null,
+          }).catch(() => undefined);
+        } catch {
+          /* columns / audit may not be ready */
+        }
         return {
           id: user.id,
           email: user.email,

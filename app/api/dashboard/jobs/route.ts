@@ -2,10 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { createJob, listAllJobs } from "@/lib/db";
+import { requireStaffPermission } from "@/lib/require-permission";
 
 export async function GET() {
   const session = await getServerSession(authOptions);
-  if (!session || session.user.role !== "ADMIN") {
+  if (!session) return NextResponse.json({ error: "غير مصرح" }, { status: 403 });
+  const gate = await requireStaffPermission(session.user.id, session.user.role, "canPostJobs");
+  if (!gate.ok && session.user.role !== "ADMIN") {
+    return NextResponse.json({ error: gate.error }, { status: gate.status });
+  }
+  if (session.user.role !== "ADMIN" && session.user.role !== "ASSISTANT_ADMIN") {
     return NextResponse.json({ error: "غير مصرح" }, { status: 403 });
   }
   try {
@@ -18,8 +24,10 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   const session = await getServerSession(authOptions);
-  if (!session || session.user.role !== "ADMIN") {
-    return NextResponse.json({ error: "غير مصرح" }, { status: 403 });
+  if (!session) return NextResponse.json({ error: "غير مصرح" }, { status: 403 });
+  if (session.user.role !== "ADMIN") {
+    const gate = await requireStaffPermission(session.user.id, session.user.role, "canPostJobs");
+    if (!gate.ok) return NextResponse.json({ error: gate.error }, { status: gate.status });
   }
   let body: {
     title?: string;
@@ -28,6 +36,10 @@ export async function POST(request: NextRequest) {
     descriptionAr?: string | null;
     location?: string | null;
     jobType?: string | null;
+    imageUrl?: string | null;
+    email?: string | null;
+    phone?: string | null;
+    whatsapp?: string | null;
     isPublished?: boolean;
     order?: number;
   };
@@ -46,6 +58,10 @@ export async function POST(request: NextRequest) {
       description_ar: body.descriptionAr ?? null,
       location: body.location ?? null,
       job_type: body.jobType ?? null,
+      image_url: body.imageUrl ?? null,
+      email: body.email ?? null,
+      phone: body.phone ?? null,
+      whatsapp: body.whatsapp ?? null,
       is_published: body.isPublished === true,
       order: body.order,
     });

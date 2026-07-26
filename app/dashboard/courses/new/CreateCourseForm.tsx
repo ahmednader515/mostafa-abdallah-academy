@@ -46,6 +46,12 @@ export function CreateCourseForm() {
     accessDurationDays: "",
     deliveryMode: "recorded" as "recorded" | "live" | "hybrid",
     isVisible: true,
+    teacherImageUrl: "",
+    teacherDescription: "",
+    iconsCsv: "",
+    availableToSubscribers: true,
+    availableForPurchase: true,
+    pricingMode: "paid" as "free" | "paid" | "subscription",
   });
   const [lessons, setLessons] = useState<LessonRow[]>([
     { title: "", videoUrl: "", content: "", pdfUrl: "", attachments: [], acceptsHomework: false },
@@ -327,20 +333,36 @@ export function CreateCourseForm() {
       shortDescAr: form.shortDescAr.trim() || undefined,
       shortDescEn: form.shortDescEn.trim() || undefined,
       imageUrl: form.imageUrl.trim() || undefined,
-      price: form.price ? parseFloat(form.price) : 0,
       duration: form.duration.trim() || undefined,
       level: form.level.trim() || undefined,
       maxQuizAttempts: form.maxQuizAttempts.trim() ? parseInt(form.maxQuizAttempts, 10) : null,
       ...(form.categoryNameAr.trim() || form.categoryNameEn.trim()
         ? { categoryNameAr: form.categoryNameAr.trim(), categoryNameEn: form.categoryNameEn.trim() }
         : form.categoryId ? { categoryId: form.categoryId } : {}),
-      accessType: form.accessType,
+      accessType:
+        form.pricingMode === "subscription"
+          ? "subscription_only"
+          : form.accessType,
       accessDurationDays:
         form.accessType === "duration_days" && form.accessDurationDays.trim()
           ? parseInt(form.accessDurationDays, 10)
           : null,
       deliveryMode: form.deliveryMode,
       isVisible: form.isVisible,
+      teacherImageUrl: form.teacherImageUrl.trim() || null,
+      teacherDescription: form.teacherDescription.trim() || null,
+      iconsJson: form.iconsCsv.trim()
+        ? JSON.stringify(form.iconsCsv.split(",").map((s) => s.trim()).filter(Boolean))
+        : null,
+      availableToSubscribers: form.availableToSubscribers,
+      availableForPurchase: form.availableForPurchase,
+      pricingMode: form.pricingMode,
+      price:
+        form.pricingMode === "free"
+          ? 0
+          : form.price
+            ? parseFloat(form.price)
+            : 0,
       lessons: validLessons.map((l) => ({
           title: l.title.trim(),
           videoUrl: l.videoUrl.trim() || undefined,
@@ -513,13 +535,68 @@ export function CreateCourseForm() {
           </div>
           <div>
             <label className="block text-sm font-medium text-[var(--color-foreground)]">{t(`${Cf}.priceEgpLabel`)}</label>
+            <p className="mt-0.5 text-xs text-[var(--color-muted)]">{t(`${Cf}.currencyNote`, "Prices are stored in EGP. Use coupons for discounts.")}</p>
+            <select
+              value={form.pricingMode}
+              onChange={(e) => setForm((f) => ({ ...f, pricingMode: e.target.value as typeof f.pricingMode }))}
+              className="mt-1 w-full rounded-[var(--radius-btn)] border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2"
+            >
+              <option value="free">{t(`${Cf}.pricingFree`, "Free")}</option>
+              <option value="paid">{t(`${Cf}.pricingPaid`, "Paid")}</option>
+              <option value="subscription">{t(`${Cf}.pricingSubscription`, "Subscription only")}</option>
+            </select>
+            {form.pricingMode === "paid" ? (
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                value={form.price}
+                onChange={(e) => setForm((f) => ({ ...f, price: e.target.value }))}
+                placeholder="0"
+                className="mt-2 w-full rounded-[var(--radius-btn)] border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2"
+              />
+            ) : null}
+            <div className="mt-2 space-y-1 text-sm">
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={form.availableToSubscribers}
+                  onChange={(e) => setForm((f) => ({ ...f, availableToSubscribers: e.target.checked }))}
+                />
+                {t(`${Cf}.availableToSubscribers`, "Available to platform subscribers")}
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={form.availableForPurchase}
+                  onChange={(e) => setForm((f) => ({ ...f, availableForPurchase: e.target.checked }))}
+                />
+                {t(`${Cf}.availableForPurchase`, "Available for separate purchase")}
+              </label>
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium">{t(`${Cf}.teacherImage`, "Teacher image URL")}</label>
             <input
-              type="number"
-              step="0.01"
-              min="0"
-              value={form.price}
-              onChange={(e) => setForm((f) => ({ ...f, price: e.target.value }))}
-              placeholder="0"
+              value={form.teacherImageUrl}
+              onChange={(e) => setForm((f) => ({ ...f, teacherImageUrl: e.target.value }))}
+              className="mt-1 w-full rounded-[var(--radius-btn)] border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium">{t(`${Cf}.teacherBio`, "Teacher bio")}</label>
+            <textarea
+              value={form.teacherDescription}
+              onChange={(e) => setForm((f) => ({ ...f, teacherDescription: e.target.value }))}
+              rows={2}
+              className="mt-1 w-full rounded-[var(--radius-btn)] border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium">{t(`${Cf}.iconsCsv`, "Icons (comma-separated URLs)")}</label>
+            <input
+              value={form.iconsCsv}
+              onChange={(e) => setForm((f) => ({ ...f, iconsCsv: e.target.value }))}
               className="mt-1 w-full rounded-[var(--radius-btn)] border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2"
             />
           </div>
@@ -846,30 +923,40 @@ export function CreateCourseForm() {
                 {t(`${Cf}.deleteQuiz`)}
               </button>
             </div>
-            <div className="mb-3">
-              <label className="block text-sm font-medium text-[var(--color-foreground)]">{t(`${Cf}.quizDurationMinutes`)}</label>
-              <input
-                type="number"
-                min="1"
-                placeholder={t(`${Cf}.openTimePlaceholderLine`)}
-                value={quiz.timeLimitMinutes}
-                onChange={(e) => updateQuizTimeLimit(qi, e.target.value)}
-                className="mt-1 w-full max-w-xs rounded-[var(--radius-btn)] border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2"
-              />
-              <p className="mt-1 text-xs text-[var(--color-muted)]">{t(`${Cf}.quizTimeHelp`)}</p>
-            </div>
-            <div className="mb-3">
-              <label className="block text-sm font-medium text-[var(--color-foreground)]">{t(`${Cf}.quizPassingScoreLabel`)}</label>
-              <input
-                type="number"
-                min="0"
-                max="100"
-                placeholder={t(`${Cf}.quizPassingScorePlaceholder`)}
-                value={quiz.passingScore}
-                onChange={(e) => updateQuizPassingScore(qi, e.target.value)}
-                className="mt-1 w-full max-w-xs rounded-[var(--radius-btn)] border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2"
-              />
-              <p className="mt-1 text-xs text-[var(--color-muted)]">{t(`${Cf}.quizPassingScoreHelp`)}</p>
+            <div className="mb-3 grid gap-3 sm:grid-cols-2">
+              <div>
+                <label className="block text-sm font-medium text-[var(--color-foreground)]">
+                  {t(`${Cf}.quizDurationMinutes`, "Time limit (minutes)")}
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  placeholder={t(`${Cf}.openTimePlaceholderLine`, "Leave empty for unlimited")}
+                  value={quiz.timeLimitMinutes}
+                  onChange={(e) => updateQuizTimeLimit(qi, e.target.value)}
+                  className="mt-1 w-full rounded-[var(--radius-btn)] border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2"
+                />
+                <p className="mt-1 text-xs text-[var(--color-muted)]">
+                  {t(`${Cf}.quizTimeHelp`, "Students see a countdown when a limit is set.")}
+                </p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-[var(--color-foreground)]">
+                  {t(`${Cf}.quizPassingScore`, "Passing score (%)")}
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  placeholder="60"
+                  value={quiz.passingScore}
+                  onChange={(e) => updateQuizPassingScore(qi, e.target.value)}
+                  className="mt-1 w-full rounded-[var(--radius-btn)] border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2"
+                />
+                <p className="mt-1 text-xs text-[var(--color-muted)]">
+                  {t(`${Cf}.quizPassingHelp`, "Minimum grade to mark the quiz as passed / certificate eligibility.")}
+                </p>
+              </div>
             </div>
             {quiz.questions.map((q, qti) => (
               <div key={qti} className="mb-4 rounded border border-[var(--color-border)] bg-[var(--color-surface)] p-3">

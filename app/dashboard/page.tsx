@@ -17,11 +17,13 @@ import {
   getLatestPlatformSubscriptionExpiry,
   getEnrollmentsWithCourseByUserId,
 } from "@/lib/db";
+import { getDashboardOverview } from "@/lib/dashboard-overview";
 import { getServerTranslator } from "@/lib/i18n/server";
 import { MyCoursesSection } from "./MyCoursesSection";
 import { ActivateCodeSection } from "./ActivateCodeSection";
 import { StudentSubscriptionsPanel } from "./StudentSubscriptionsPanel";
 import { DashboardStudentBalance } from "@/components/DashboardStudentBalance";
+import { AdminOverviewPanel } from "./AdminOverviewPanel";
 
 export default async function DashboardPage() {
   const session = await getServerSession(authOptions);
@@ -149,206 +151,31 @@ export default async function DashboardPage() {
   }
 
   if (isStudent) {
-    const user = await getUserById(session.user.id);
-    const enrolledCourses = user ? await getAccessibleCoursesForUser(session.user.id) : [];
-    const balance = user ? Number(user.balance) : 0;
-
-    let subscriptionsFeature = false;
-    let subscriptionPlansForStudent: Awaited<ReturnType<typeof listActiveSubscriptionPlansPublic>> = [];
-    let studentHasActiveSub = false;
-    let studentSubExpiresIso: string | null = null;
-    let storePurchases: Awaited<ReturnType<typeof listStudentStorePurchases>> = [];
-    try {
-      subscriptionsFeature = await getSubscriptionsFeatureEnabled();
-      if (subscriptionsFeature) {
-        subscriptionPlansForStudent = await listActiveSubscriptionPlansPublic();
-        studentHasActiveSub = await userHasActivePlatformSubscription(session.user.id);
-        const exp = studentHasActiveSub ? await getLatestPlatformSubscriptionExpiry(session.user.id) : null;
-        studentSubExpiresIso = exp ? exp.toISOString() : null;
-      }
-      storePurchases = await listStudentStorePurchases(session.user.id).catch(() => []);
-    } catch {
-      subscriptionsFeature = false;
-    }
-
-    const enrollmentsWithExpiry = (await getEnrollmentsWithCourseByUserId(session.user.id).catch(() => [])).filter(
-      (e) => e.expiresAt,
-    );
-
-    return (
-      <div className="space-y-8">
-        <div className="grid gap-6 sm:grid-cols-2">
-          <div className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] p-6 shadow-[var(--shadow-card)]">
-            <h2 className="text-lg font-semibold text-[var(--color-foreground)]">
-              {t("dashboard.page.greetingComma", "Welcome,")} {session.user.name}
-            </h2>
-            <div className="mt-4 flex flex-wrap items-center gap-4">
-              <DashboardStudentBalance balanceEgp={Number(balance)} />
-              <Link
-                href="/dashboard/add-balance"
-                className="rounded-[var(--radius-btn)] bg-[var(--color-primary)] px-4 py-2 text-sm font-medium text-white transition hover:bg-[var(--color-primary-hover)]"
-              >
-                {t("dashboard.page.addBalanceButton", "Add balance")}
-              </Link>
-            </div>
-          </div>
-          <div className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] p-6 shadow-[var(--shadow-card)]">
-            <h2 className="mb-2 text-lg font-semibold text-[var(--color-foreground)]">
-              {t("dashboard.page.availableCoursesTitle", "Available courses")}
-            </h2>
-            <p className="mb-4 text-sm text-[var(--color-muted)]">
-              {t(
-                "dashboard.page.availableCoursesDesc",
-                "Browse all courses and enroll in what suits you",
-              )}
-            </p>
-            <Link
-              href="/courses"
-              className="inline-flex rounded-[var(--radius-btn)] bg-[var(--color-primary)] px-4 py-2 text-sm font-medium text-white transition hover:bg-[var(--color-primary-hover)]"
-            >
-              {t("dashboard.page.viewCoursesButton", "View courses")}
-            </Link>
-          </div>
-        </div>
-
-        <div className="grid gap-6 sm:grid-cols-2">
-          <ActivateCodeSection />
-          <Link
-            href="/dashboard/messages"
-            className="flex flex-col justify-center rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] p-6 shadow-[var(--shadow-card)] text-center transition hover:border-[var(--color-primary)]/30"
-          >
-            <h2 className="text-lg font-semibold text-[var(--color-foreground)]">
-              {t("dashboard.page.inboxTitle", "Inbox")}
-            </h2>
-            <p className="mt-2 text-sm text-[var(--color-muted)]">
-              {t(
-                "dashboard.page.inboxDesc",
-                "Messages and conversations from admin or your teacher",
-              )}
-            </p>
-            <span className="mt-4 inline-flex w-fit rounded-[var(--radius-btn)] bg-[var(--color-primary)] px-5 py-2.5 text-base font-medium text-white transition hover:bg-[var(--color-primary-hover)]">
-              {t("dashboard.page.openMessagesButton", "Open messages")}
-            </span>
-          </Link>
-          <Link
-            href="/certificates"
-            className="flex flex-col justify-center rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] p-6 shadow-[var(--shadow-card)] text-center transition hover:border-[var(--color-primary)]/30"
-          >
-            <h2 className="text-lg font-semibold text-[var(--color-foreground)]">
-              {t("dashboard.page.certificatesTitle", "My certificates")}
-            </h2>
-            <p className="mt-2 text-sm text-[var(--color-muted)]">
-              {t("dashboard.page.certificatesDesc", "View and print certificates you've earned")}
-            </p>
-            <span className="mt-4 inline-flex w-fit self-center rounded-[var(--radius-btn)] bg-[var(--color-primary)] px-5 py-2.5 text-base font-medium text-white transition hover:bg-[var(--color-primary-hover)]">
-              {t("dashboard.page.viewCertificatesButton", "View certificates")}
-            </span>
-          </Link>
-        </div>
-
-        {subscriptionsFeature ? (
-          <StudentSubscriptionsPanel
-            plans={subscriptionPlansForStudent}
-            hasActivePlatformSubscription={studentHasActiveSub}
-            activePlatformSubscriptionExpiresAtIso={studentSubExpiresIso}
-          />
-        ) : null}
-
-        {enrollmentsWithExpiry.length > 0 ? (
-          <section className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] p-6 shadow-[var(--shadow-card)]">
-            <h2 className="mb-4 text-lg font-semibold text-[var(--color-foreground)]">
-              {t("dashboard.page.enrollmentExpiryTitle", "Course access expiry")}
-            </h2>
-            <ul className="space-y-2">
-              {enrollmentsWithExpiry.map((e) => {
-                const expiresAt = e.expiresAt ? new Date(e.expiresAt as string | Date) : null;
-                // eslint-disable-next-line react-hooks/purity -- server component: snapshot time at request render
-                const expired = expiresAt ? expiresAt.getTime() < Date.now() : false;
-                return (
-                  <li
-                    key={e.id}
-                    className="flex flex-wrap items-center justify-between gap-2 rounded-[var(--radius-btn)] border border-[var(--color-border)] px-4 py-3"
-                  >
-                    <span className="font-medium text-[var(--color-foreground)]">
-                      {e.course.titleAr || e.course.title}
-                    </span>
-                    <span className={`text-sm ${expired ? "text-red-600 dark:text-red-400" : "text-[var(--color-muted)]"}`}>
-                      {expired
-                        ? t("dashboard.page.enrollmentExpired", "Access expired on")
-                        : t("dashboard.page.enrollmentExpiresOn", "Access expires on")}{" "}
-                      {expiresAt?.toLocaleDateString()}
-                    </span>
-                  </li>
-                );
-              })}
-            </ul>
-          </section>
-        ) : null}
-
-        {storePurchases.length > 0 ? (
-          <section className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] p-6 shadow-[var(--shadow-card)]">
-            <div className="mb-4 flex items-center justify-between gap-3">
-              <h2 className="text-lg font-semibold text-[var(--color-foreground)]">
-                {t("dashboard.page.storePurchasesTitle", "My platform store purchases")}
-              </h2>
-              <Link href="/library" className="text-sm font-medium text-[var(--color-primary)] hover:underline">
-                {t("dashboard.page.goToLibraryLink", "Go to library")}
-              </Link>
-            </div>
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {storePurchases.map((item) => (
-                <article
-                  key={item.purchaseId}
-                  className="overflow-hidden rounded-[var(--radius-btn)] border border-[var(--color-border)] bg-[var(--color-background)]"
-                >
-                  {item.imageUrl ? (
-                    <img src={item.imageUrl} alt={item.title} className="h-32 w-full object-cover" />
-                  ) : (
-                    <div className="h-32 w-full bg-[var(--color-primary)]/10" />
-                  )}
-                  <div className="p-4">
-                    <h3 className="text-sm font-semibold text-[var(--color-foreground)]">{item.title}</h3>
-                    <p className="mt-1 line-clamp-2 text-xs text-[var(--color-muted)]">{item.description}</p>
-                    {item.pdfUrl ? (
-                      <a
-                        href={item.pdfUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="mt-3 inline-flex rounded-[var(--radius-btn)] bg-[var(--color-primary)] px-3 py-2 text-xs font-medium text-white hover:bg-[var(--color-primary-hover)]"
-                      >
-                        {t("dashboard.page.downloadFileButton", "Download file")}
-                      </a>
-                    ) : (
-                      <p className="mt-3 text-xs text-[var(--color-muted)]">
-                        {t(
-                          "dashboard.page.noPdfForProduct",
-                          "No PDF file is available for this product.",
-                        )}
-                      </p>
-                    )}
-                  </div>
-                </article>
-              ))}
-            </div>
-          </section>
-        ) : null}
-
-        <MyCoursesSection courses={enrolledCourses} />
-      </div>
-    );
+    const [{ getStudentOverview, getStudentDashboardFlags }, { StudentHomePanel }] = await Promise.all([
+      import("@/lib/student-dashboard"),
+      import("./StudentHomePanel"),
+    ]);
+    const [overview, flags] = await Promise.all([
+      getStudentOverview(session.user.id),
+      getStudentDashboardFlags(),
+    ]);
+    if (!overview) redirect("/login");
+    return <StudentHomePanel overview={overview} flags={flags} />;
   }
 
-  const [studentsCount, coursesCount, _quizAttempts, totalEarnings] = await Promise.all([
+  const [studentsCount, coursesCount, _quizAttempts, totalEarnings, overview] = await Promise.all([
     countUsersByRole("STUDENT"),
     countCourses(),
     getAllQuizAttemptsForAdmin().catch(() => []),
     getTotalPlatformEarnings(),
+    getDashboardOverview().catch(() => null),
   ]);
 
   void _quizAttempts;
 
   return (
     <div className="space-y-8">
+      {(isAdmin || isAssistant) && overview ? <AdminOverviewPanel overview={overview} /> : null}
       {(isAdmin || isAssistant) && (
         <>
           <div>

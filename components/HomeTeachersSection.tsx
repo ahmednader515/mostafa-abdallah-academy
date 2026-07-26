@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { TeacherPublicCard, type TeacherCardCourse } from "@/components/TeacherPublicCard";
+import { useT } from "@/components/LocaleProvider";
 
 export type HomeTeacher = {
   id: string;
@@ -12,7 +13,7 @@ export type HomeTeacher = {
   courses: TeacherCardCourse[];
 };
 
-/** قسم الصفحة الرئيسية «اختر المدرسين» — يظهر فقط عند تفعيل الميزة من السيرفر */
+/** Homepage «Choose the trainers» section — only when the feature is enabled. */
 export function HomeTeachersSection({
   enabled,
   initialTeachers,
@@ -20,7 +21,7 @@ export function HomeTeachersSection({
   enabled: boolean;
   initialTeachers: HomeTeacher[];
 }) {
-  /** الترتيب يُحدَّد من السيرفر (محددون من لوحة التحكم ثم أبجدي حتى 4). */
+  const t = useT();
   const visible = initialTeachers;
 
   if (!enabled) return null;
@@ -28,7 +29,6 @@ export function HomeTeachersSection({
   return (
     <section
       className="home-teachers-hero-blend py-14"
-      dir="rtl"
       aria-labelledby="home-teachers-heading"
     >
       <div className="mx-auto max-w-6xl px-4 sm:px-6">
@@ -37,7 +37,7 @@ export function HomeTeachersSection({
             id="home-teachers-heading"
             className="text-4xl font-bold leading-tight text-[var(--color-primary)] sm:text-5xl"
           >
-            اختر المدرسين
+            {t("home.teachersSection.title", "Choose the trainers")}
           </h2>
           <svg
             className="mt-3 h-8 w-[17.5rem] text-[var(--color-primary)] sm:h-9 sm:w-[21rem] md:w-[26rem]"
@@ -54,25 +54,31 @@ export function HomeTeachersSection({
             />
           </svg>
           <p className="mt-3 max-w-xl text-sm text-[var(--color-muted)]">
-            تصفح مدرسي المنصة وانتقل إلى دورات كل مدرس
+            {t(
+              "home.teachersSection.subtitle",
+              "Browse platform trainers and open each trainer’s courses",
+            )}
           </p>
         </div>
 
         {visible.length === 0 ? (
           <p className="mt-14 text-center text-[var(--color-muted)]">
-            لا يوجد مدرسون حتى الآن. أنشئ حسابات من لوحة التحكم ← تعدد المدرسين.
+            {t(
+              "home.teachersSection.empty",
+              "No trainers yet. Create accounts from the dashboard ← Multiple trainers.",
+            )}
           </p>
         ) : (
           <>
             <div className="mt-10 grid justify-items-center gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {visible.map((t) => (
+              {visible.map((teacher) => (
                 <TeacherPublicCard
-                  key={t.id}
-                  teacherId={t.id}
-                  name={t.name}
-                  teacherSubject={t.teacherSubject}
-                  teacherAvatarUrl={t.teacherAvatarUrl}
-                  courses={t.courses}
+                  key={teacher.id}
+                  teacherId={teacher.id}
+                  name={teacher.name}
+                  teacherSubject={teacher.teacherSubject}
+                  teacherAvatarUrl={teacher.teacherAvatarUrl}
+                  courses={teacher.courses}
                   titleTag="h3"
                 />
               ))}
@@ -82,7 +88,7 @@ export function HomeTeachersSection({
                 href="/teachers"
                 className="text-sm font-semibold text-[var(--color-primary)] underline-offset-4 hover:underline"
               >
-                صفحة المدرسين الكاملة ←
+                {t("home.teachersSection.viewAll", "Full trainers page →")}
               </Link>
             </div>
           </>

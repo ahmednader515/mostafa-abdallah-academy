@@ -6,29 +6,31 @@ import {
   getCoursesPublished,
   getReviews,
   listActiveSubscriptionPlansPublic,
-  listStoreProductsPublic,
   listTeachersForHomepage,
   selectTeachersForHomepagePreview,
   userHasActivePlatformSubscription,
   getLatestPlatformSubscriptionExpiry,
+  listPublishedJobsForHomepage,
 } from "@/lib/db";
 import {
   getCategoriesCached,
   getHomepageLiveStreamsCached,
   getPublishedCoursesCached,
-  getReviewsCached,
-  getStoreProductsPublicCached,
+  getReviewsForHomepageCached,
+  getStoreProductsCountPublicCached,
   getSubscriptionPlansPublicCached,
   getTeachersForHomepageCached,
   getVisibleHomepageSectionsCached,
 } from "@/lib/cached-public-data";
 import { getVisibleHomepageSections, getHomepageLiveStreams } from "@/lib/lms-spec-db";
-import type { HomepageSetting, HomepageSection } from "@/lib/types";
+import type { HomepageSetting } from "@/lib/types";
 import { CourseCard } from "@/components/CourseCard";
 import { HorizontalScrollRow } from "@/components/HorizontalScrollRow";
 import { HomeTeachersSection } from "@/components/HomeTeachersSection";
 import { HomeSubscriptionsSection } from "@/components/HomeSubscriptionsSection";
 import { HomeStoreSection } from "@/components/HomeStoreSection";
+import { HomeJobsSection } from "@/components/HomeJobsSection";
+import { HomePolicyCardsSection } from "@/components/HomePolicyCardsSection";
 import { HomeLiveStreamsSection, type HomeLiveStream } from "@/components/HomeLiveStreamsSection";
 import { HomePlatformDetailsSection } from "@/components/HomePlatformDetailsSection";
 import { parsePlatformDetailsItems } from "@/lib/platform-details";
@@ -52,8 +54,13 @@ import { homepageDefaultForLocale } from "@/lib/homepage-default-for-locale";
 import { pickLocalizedText } from "@/lib/i18n/localized-field";
 import { HomeMainNavButtons } from "@/components/HomeMainNavButtons";
 import { HomeSocialSection } from "@/components/HomeSocialSection";
+import { LazySection } from "@/components/LazySection";
+import { OptimizedImage } from "@/components/OptimizedImage";
 import type { HomepageMainNavFlags } from "@/lib/homepage-hero-stats";
 import { DEFAULT_MAIN_NAV_FLAGS } from "@/lib/homepage-hero-stats";
+
+/** Cap cards per category on the homepage; full lists live on /courses. */
+const HOMEPAGE_COURSES_PER_CATEGORY = 8;
 
 type CourseWithCategory = Awaited<ReturnType<typeof getPublishedCoursesCached>>[number];
 
@@ -89,11 +96,12 @@ export async function HomePageBelowFold({
     [t, locale],
     teachersResult,
     subscriptionPlansResult,
-    storeProductsResult,
+    storeProductsCount,
     coursesCategoriesResult,
     reviewsResult,
     sectionsStreamsResult,
     studentSubscriptionResult,
+    jobsResult,
   ] = await Promise.all([
     Promise.all([getServerTranslator(), getLocaleFromCookie()]),
     homepageSettings.teachersEnabled
@@ -103,23 +111,24 @@ export async function HomePageBelowFold({
       ? getSubscriptionPlansPublicCached().catch(() => [] as Awaited<ReturnType<typeof listActiveSubscriptionPlansPublic>>)
       : Promise.resolve([] as Awaited<ReturnType<typeof listActiveSubscriptionPlansPublic>>),
     homepageSettings.storeEnabled
-      ? getStoreProductsPublicCached().catch(() => [] as Awaited<ReturnType<typeof listStoreProductsPublic>>)
-      : Promise.resolve([] as Awaited<ReturnType<typeof listStoreProductsPublic>>),
+      ? getStoreProductsCountPublicCached().catch(() => 0)
+      : Promise.resolve(0),
     Promise.all([
       getPublishedCoursesCached().catch(() => [] as Awaited<ReturnType<typeof getCoursesPublished>>),
       getCategoriesCached().catch(() => [] as Awaited<ReturnType<typeof getCategories>>),
     ]),
-    getReviewsCached().catch(() => [] as Awaited<ReturnType<typeof getReviews>>),
+    getReviewsForHomepageCached().catch(() => [] as Awaited<ReturnType<typeof getReviews>>),
     Promise.all([
       getVisibleHomepageSectionsCached().catch(() => [] as Awaited<ReturnType<typeof getVisibleHomepageSections>>),
       getHomepageLiveStreamsCached().catch(() => [] as Awaited<ReturnType<typeof getHomepageLiveStreams>>),
     ]),
     studentId ? loadStudentSubscription(studentId) : Promise.resolve(null),
+    listPublishedJobsForHomepage(12).catch(() => [] as Awaited<ReturnType<typeof listPublishedJobsForHomepage>>),
   ]);
 
   let teachersForHome = teachersResult;
   const subscriptionPlansHome = subscriptionPlansResult;
-  const storeProductsHome = storeProductsResult;
+  const storeCount = storeProductsCount;
   let [courses, categories] = coursesCategoriesResult;
   const reviews = reviewsResult;
   const [visibleSections, homeLiveStreamsRaw] = sectionsStreamsResult;
@@ -168,12 +177,15 @@ export async function HomePageBelowFold({
       courseSections.push({
         title: pickLocalizedText(locale, (cat as { nameAr?: string | null }).nameAr, cat.name),
         slug: cat.slug,
-        courses: list,
+        courses: list.slice(0, HOMEPAGE_COURSES_PER_CATEGORY),
       });
     }
   }
   if (uncategorized.length > 0) {
-    courseSections.push({ title: t("courses.allCoursesTitle", "All courses"), courses: uncategorized });
+    courseSections.push({
+      title: t("courses.allCoursesTitle", "All courses"),
+      courses: uncategorized.slice(0, HOMEPAGE_COURSES_PER_CATEGORY),
+    });
   }
 
   const platformDetailsItems = parsePlatformDetailsItems(homepageSettings.platformDetailsItems);
@@ -298,177 +310,218 @@ export async function HomePageBelowFold({
 
   const platformDetailsBlock =
     homepageSettings.platformDetailsEnabled && platformDetailsItems.length > 0 ? (
-      <HomePlatformDetailsSection
-        title={platformDetailsTitle}
-        subtitle={platformDetailsSubtitle || null}
-        backgroundColor={homepageSettings.platformDetailsBackgroundColor?.trim() || null}
-        items={platformDetailsItems}
-      />
+      <LazySection minHeight={360}>
+        <HomePlatformDetailsSection
+          title={platformDetailsTitle}
+          subtitle={platformDetailsSubtitle || null}
+          backgroundColor={homepageSettings.platformDetailsBackgroundColor?.trim() || null}
+          items={platformDetailsItems}
+        />
+      </LazySection>
     ) : null;
 
   const teachersBlock = homepageSettings.teachersEnabled ? (
-    <HomeTeachersSection enabled initialTeachers={teachersHomePreview} />
+    <LazySection minHeight={420}>
+      <HomeTeachersSection enabled initialTeachers={teachersHomePreview} />
+    </LazySection>
   ) : null;
 
   const subscriptionsBlock = homepageSettings.subscriptionsEnabled ? (
-    <div id="home-subscriptions" className="scroll-mt-24">
-      <HomeSubscriptionsSection
-        enabled
-        plans={subscriptionPlansHome}
-        isStudent={session?.user?.role === "STUDENT"}
-        isLoggedIn={!!session}
-        studentPlatformSubscription={studentPlatformSubscription}
-      />
-    </div>
+    <LazySection minHeight={480}>
+      <div id="home-subscriptions" className="scroll-mt-24">
+        <HomeSubscriptionsSection
+          enabled
+          plans={subscriptionPlansHome}
+          isStudent={session?.user?.role === "STUDENT"}
+          isLoggedIn={!!session}
+          studentPlatformSubscription={studentPlatformSubscription}
+        />
+      </div>
+    </LazySection>
   ) : null;
 
   const coursesBlock =
     courseSections.length > 0 ? (
       <>
         {courseSections.map((section, idx) => (
-          <section
-            key={section.slug ?? `uncategorized-${idx}`}
-            className="bg-white dark:bg-[var(--color-background)] mx-auto max-w-6xl px-4 py-16 sm:px-6"
-          >
-            <div className="flex items-end justify-between gap-4">
-              <div>
-                <h2 className="text-2xl font-bold text-[var(--color-foreground)]">{section.title}</h2>
-                <p className="mt-1 text-[var(--color-muted)]">
-                  {section.slug
-                    ? `${t("courses.categoryCoursesPrefix", "Category courses:")} ${section.title}`
-                    : t("courses.allCoursesTitle", "All courses")}
-                </p>
+          <LazySection key={section.slug ?? `uncategorized-${idx}`} minHeight={420}>
+            <section className="bg-white dark:bg-[var(--color-background)] mx-auto max-w-6xl px-4 py-16 sm:px-6">
+              <div className="flex items-end justify-between gap-4">
+                <div>
+                  <h2 className="text-2xl font-bold text-[var(--color-foreground)]">{section.title}</h2>
+                  <p className="mt-1 text-[var(--color-muted)]">
+                    {section.slug
+                      ? `${t("courses.categoryCoursesPrefix", "Category courses:")} ${section.title}`
+                      : t("courses.allCoursesTitle", "All courses")}
+                  </p>
+                </div>
+                <Link
+                  href={section.slug ? `/courses?category=${encodeURIComponent(section.slug)}` : "/courses"}
+                  className="text-sm font-medium text-[var(--color-primary)] hover:underline"
+                >
+                  {t("common.courses", "Courses")} ←
+                </Link>
               </div>
-              <Link
-                href={section.slug ? `/courses?category=${encodeURIComponent(section.slug)}` : "/courses"}
-                className="text-sm font-medium text-[var(--color-primary)] hover:underline"
-              >
-                {t("common.courses", "Courses")} ←
-              </Link>
-            </div>
 
-            <div className="mt-10">
-              <HorizontalScrollRow>
-                {section.courses.map((course) => {
-                  const c = course as CourseWithCategory & {
-                    lessonsCount?: number;
-                    instructorName?: string | null;
-                    titleAr?: string | null;
-                    shortDesc?: string | null;
-                    shortDescEn?: string | null;
-                    imageUrl?: string | null;
-                    courseRating?: unknown;
-                    courseRatingCount?: unknown;
-                  };
-                  return (
-                    <CourseCard
-                      key={course.id}
-                      course={{
-                        id: c.id,
-                        title: c.title,
-                        titleAr: c.titleAr ?? c.title_ar,
-                        slug: c.slug,
-                        shortDesc: c.shortDesc ?? c.short_desc,
-                        shortDescEn: c.shortDescEn ?? c.short_desc_en,
-                        duration: c.duration,
-                        level: c.level,
-                        imageUrl: c.imageUrl ?? c.image_url,
-                        price: c.price,
-                        courseRating: c.courseRating ?? c.course_rating,
-                        courseRatingCount: c.courseRatingCount ?? c.course_rating_count,
-                        lessonsCount: c.lessonsCount,
-                        instructorName: c.instructorName,
-                        category: c.category
-                          ? {
-                              name: (c.category as { name?: string }).name ?? "",
-                              nameAr:
-                                (c.category as { nameAr?: string | null; name_ar?: string | null })
-                                  .nameAr ??
-                                (c.category as { name_ar?: string | null }).name_ar,
-                            }
-                          : null,
-                      }}
-                    />
-                  );
-                })}
-              </HorizontalScrollRow>
-            </div>
-          </section>
+              <div className="mt-10">
+                <HorizontalScrollRow>
+                  {section.courses.map((course) => {
+                    const c = course as CourseWithCategory & {
+                      lessonsCount?: number;
+                      instructorName?: string | null;
+                      titleAr?: string | null;
+                      shortDesc?: string | null;
+                      shortDescEn?: string | null;
+                      imageUrl?: string | null;
+                      courseRating?: unknown;
+                      courseRatingCount?: unknown;
+                    };
+                    return (
+                      <CourseCard
+                        key={course.id}
+                        course={{
+                          id: c.id,
+                          title: c.title,
+                          titleAr: c.titleAr ?? c.title_ar,
+                          slug: c.slug,
+                          shortDesc: c.shortDesc ?? c.short_desc,
+                          shortDescEn: c.shortDescEn ?? c.short_desc_en,
+                          duration: c.duration,
+                          level: c.level,
+                          imageUrl: c.imageUrl ?? c.image_url,
+                          price: c.price,
+                          courseRating: c.courseRating ?? c.course_rating,
+                          courseRatingCount: c.courseRatingCount ?? c.course_rating_count,
+                          lessonsCount: c.lessonsCount,
+                          instructorName: c.instructorName,
+                          category: c.category
+                            ? {
+                                name: (c.category as { name?: string }).name ?? "",
+                                nameAr:
+                                  (c.category as { nameAr?: string | null; name_ar?: string | null })
+                                    .nameAr ??
+                                  (c.category as { name_ar?: string | null }).name_ar,
+                              }
+                            : null,
+                        }}
+                      />
+                    );
+                  })}
+                </HorizontalScrollRow>
+              </div>
+            </section>
+          </LazySection>
         ))}
       </>
     ) : null;
 
   const storeBlock =
-    homepageSettings.storeEnabled && storeProductsHome.length > 0 ? (
-      <HomeStoreSection
-        productsCount={storeProductsHome.length}
-        sectionTitle={storeSectionTitle}
-        sectionDescription={storeSectionDescription}
-      />
+    homepageSettings.storeEnabled && storeCount > 0 ? (
+      <LazySection minHeight={280}>
+        <HomeStoreSection
+          productsCount={storeCount}
+          sectionTitle={storeSectionTitle}
+          sectionDescription={storeSectionDescription}
+        />
+      </LazySection>
     ) : null;
+
+  const libraryBlock =
+    homepageSettings.storeEnabled && storeCount > 0 ? (
+      <LazySection minHeight={280}>
+        <HomeStoreSection
+          productsCount={storeCount}
+          sectionTitle={pickLocalizedText(locale, "المكتبة", "Library") || storeSectionTitle}
+          sectionDescription={storeSectionDescription}
+        />
+      </LazySection>
+    ) : null;
+
+  const jobsBlock =
+    jobsResult.length > 0 ? (
+      <LazySection minHeight={360}>
+        <HomeJobsSection
+          jobs={jobsResult}
+          locale={locale === "en" ? "en" : "ar"}
+          sectionTitle={t("home.jobsSectionTitle", "Jobs")}
+          sectionDescription={t("home.jobsSectionDescription", "Browse open opportunities on the platform.")}
+        />
+      </LazySection>
+    ) : null;
+
+  const policiesBlock = (
+    <HomePolicyCardsSection policyCardsJson={homepageSettings.policyCardsJson} />
+  );
 
   const liveBlock =
     homeLiveStreams.length > 0 ? (
-      <HomeLiveStreamsSection streams={homeLiveStreams} locale={locale === "en" ? "en" : "ar"} />
+      <LazySection minHeight={320}>
+        <HomeLiveStreamsSection streams={homeLiveStreams} locale={locale === "en" ? "en" : "ar"} />
+      </LazySection>
     ) : null;
 
   const reviewsBlock = (
-    <section className="reviews-section border-t border-[var(--color-border)] bg-[var(--color-reviews-bg)] px-4 py-16 sm:px-6">
-      <div className="mx-auto max-w-6xl">
-        <h2 className="text-2xl font-bold text-[var(--color-foreground)]">{reviewsTitle}</h2>
-        <p className="mt-1 text-[var(--color-muted)]">{reviewsSubtitle}</p>
-        {reviews.length > 0 ? (
-          <div className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {reviews.map((r) => {
-              const letter =
-                (r.avatarLetter && r.avatarLetter.trim()) || (r.authorName.trim()[0] ?? "؟");
-              return (
-                <div
-                  key={r.id}
-                  className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] p-5 shadow-[var(--shadow-card)]"
-                >
-                  <div className="flex items-start gap-3">
-                    <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[var(--color-reviews-avatar)] text-lg font-semibold text-[var(--color-muted)]">
-                      {letter}
+    <LazySection minHeight={420}>
+      <section className="reviews-section border-t border-[var(--color-border)] bg-[var(--color-reviews-bg)] px-4 py-16 sm:px-6">
+        <div className="mx-auto max-w-6xl">
+          <h2 className="text-2xl font-bold text-[var(--color-foreground)]">{reviewsTitle}</h2>
+          <p className="mt-1 text-[var(--color-muted)]">{reviewsSubtitle}</p>
+          {reviews.length > 0 ? (
+            <div className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+              {reviews.map((r) => {
+                const letter =
+                  (r.avatarLetter && r.avatarLetter.trim()) || (r.authorName.trim()[0] ?? "؟");
+                return (
+                  <div
+                    key={r.id}
+                    className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] p-5 shadow-[var(--shadow-card)]"
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[var(--color-reviews-avatar)] text-lg font-semibold text-[var(--color-muted)]">
+                        {letter}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-[var(--color-primary)]">{r.authorName}</p>
+                        {r.authorTitle ? (
+                          <p className="mt-0.5 text-xs text-[var(--color-muted)]">{r.authorTitle}</p>
+                        ) : null}
+                      </div>
                     </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium text-[var(--color-primary)]">{r.authorName}</p>
-                      {r.authorTitle ? (
-                        <p className="mt-0.5 text-xs text-[var(--color-muted)]">{r.authorTitle}</p>
-                      ) : null}
-                    </div>
+                    <p className="mt-4 text-[var(--color-foreground)]">{r.text}</p>
+                    {r.imageUrl ? (
+                      <div className="relative mt-4 aspect-video overflow-hidden rounded-[var(--radius-btn)] border border-[var(--color-border)] bg-black/5 dark:bg-white/5">
+                        <OptimizedImage
+                          src={r.imageUrl}
+                          alt={`${t("home.reviewImageAltPrefix", "Review image from")} ${r.authorName}`}
+                          fill
+                          sizes="(max-width: 640px) 90vw, 360px"
+                          className="object-contain"
+                        />
+                      </div>
+                    ) : null}
                   </div>
-                  <p className="mt-4 text-[var(--color-foreground)]">{r.text}</p>
-                  {r.imageUrl ? (
-                    <div className="mt-4 overflow-hidden rounded-[var(--radius-btn)] border border-[var(--color-border)] bg-black/5 p-2 dark:bg-white/5">
-                      <img
-                        src={r.imageUrl}
-                        alt={`${t("home.reviewImageAltPrefix", "Review image from")} ${r.authorName}`}
-                        loading="lazy"
-                        className="h-auto max-h-72 w-full object-contain"
-                      />
-                    </div>
-                  ) : null}
-                </div>
-              );
-            })}
-          </div>
-        ) : (
-          <p className="mt-10 text-center text-[var(--color-muted)]">{t("home.noReviewsYet", "No reviews yet.")}</p>
-        )}
-      </div>
-    </section>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="mt-10 text-center text-[var(--color-muted)]">{t("home.noReviewsYet", "No reviews yet.")}</p>
+          )}
+        </div>
+      </section>
+    </LazySection>
   );
 
   const newsBlock = showPlatformNewsSection ? (
-    <section className="border-t border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-12 sm:px-6">
-      <div className="mx-auto max-w-6xl">
-        <h2 className="mb-6 text-2xl font-bold text-[var(--color-foreground)]">
-          {platformNewsTitle}
-        </h2>
-        <HomePlatformNewsSlider items={platformNewsSlides} />
-      </div>
-    </section>
+    <LazySection minHeight={360}>
+      <section className="border-t border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-12 sm:px-6">
+        <div className="mx-auto max-w-6xl">
+          <h2 className="mb-6 text-2xl font-bold text-[var(--color-foreground)]">
+            {platformNewsTitle}
+          </h2>
+          <HomePlatformNewsSlider items={platformNewsSlides} />
+        </div>
+      </section>
+    </LazySection>
   ) : null;
 
   const socialBlock = <HomeSocialSection settings={homepageSettings} />;
@@ -480,11 +533,13 @@ export async function HomePageBelowFold({
     subscriptions: subscriptionsBlock,
     courses: coursesBlock,
     store: storeBlock,
-    library: storeBlock,
+    library: libraryBlock,
+    jobs: jobsBlock,
     live: liveBlock,
-    reviews: reviewsBlock,
     news: newsBlock,
     social: socialBlock,
+    reviews: reviewsBlock,
+    policies: policiesBlock,
   };
 
   const hasDynamicSections = visibleSections.length > 0;
@@ -504,11 +559,14 @@ export async function HomePageBelowFold({
           ) : null}
           {subscriptionsBlock}
           {coursesBlock}
+          {libraryBlock}
+          {jobsBlock}
           {storeBlock}
           {liveBlock}
-          {reviewsBlock}
           {newsBlock}
           {socialBlock}
+          {reviewsBlock}
+          {policiesBlock}
         </>
       )}
 

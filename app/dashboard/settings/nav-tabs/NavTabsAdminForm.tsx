@@ -1,0 +1,16 @@
+"use client";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useT } from "@/components/LocaleProvider";
+import { DEFAULT_NAV_TABS, type NavTab, type NavTabIcon } from "@/lib/nav-tabs";
+
+const icons: NavTabIcon[] = ["home", "courses", "myCourses", "teachers", "library", "jobs", "forum", "live", "consultations", "exams", "account", "certs", "settings"];
+export function NavTabsAdminForm({ initialTabs }: { initialTabs: NavTab[] }) {
+  const t = useT(), router = useRouter();
+  const [tabs, setTabs] = useState((initialTabs.length ? initialTabs : DEFAULT_NAV_TABS).map((tab, order) => ({ ...tab, order })));
+  const [saving, setSaving] = useState(false), [message, setMessage] = useState("");
+  const update = (index: number, patch: Partial<NavTab>) => setTabs((items) => items.map((item, i) => i === index ? { ...item, ...patch } : item));
+  function move(index: number, step: -1 | 1) { const target = index + step; if (target < 0 || target >= tabs.length) return; setTabs((items) => { const next = [...items]; [next[index], next[target]] = [next[target], next[index]]; return next.map((item, order) => ({ ...item, order })); }); }
+  async function save() { setSaving(true); const res = await fetch("/api/dashboard/settings/nav-tabs", { method: "PUT", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tabs }) }); const data = await res.json().catch(() => ({})); setSaving(false); if (!res.ok) return setMessage(data.error ?? t("dashboard.navTabs.saveFailed", "Failed to save")); setMessage(t("dashboard.navTabs.saved", "Navigation tabs saved")); router.refresh(); }
+  return <div className="mt-6 space-y-3">{tabs.map((tab, index) => <div key={tab.key} className="grid gap-3 rounded border border-[var(--color-border)] bg-[var(--color-surface)] p-4 md:grid-cols-[auto_1fr_1fr_130px_1fr_auto]"><span className="flex gap-1"><button type="button" disabled={!index} onClick={() => move(index, -1)} className="rounded border px-2">↑</button><button type="button" disabled={index === tabs.length - 1} onClick={() => move(index, 1)} className="rounded border px-2">↓</button></span><input value={tab.labelAr} onChange={(e) => update(index, { labelAr: e.target.value })} className="rounded border px-3 py-2" /><input value={tab.labelEn} onChange={(e) => update(index, { labelEn: e.target.value })} className="rounded border px-3 py-2" /><select value={tab.icon} onChange={(e) => update(index, { icon: e.target.value as NavTabIcon })} className="rounded border px-3 py-2">{icons.map((icon) => <option key={icon}>{icon}</option>)}</select><input dir="ltr" value={tab.href} onChange={(e) => update(index, { href: e.target.value })} className="rounded border px-3 py-2" /><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={tab.isVisible} onChange={(e) => update(index, { isVisible: e.target.checked })} />{t("dashboard.navTabs.visible", "Visible")}</label></div>)}{message ? <p className="text-sm">{message}</p> : null}<button type="button" disabled={saving} onClick={() => { void save(); }} className="rounded bg-[var(--color-primary)] px-5 py-2 text-white">{saving ? t("common.saving", "Saving…") : t("common.save", "Save")}</button></div>;
+}

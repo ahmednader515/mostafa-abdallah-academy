@@ -11,18 +11,29 @@ export async function GET() {
   }
   const enabled = await getTeachersFeatureEnabled();
   const teachers = enabled ? await getUsersByRole("TEACHER") : [];
+  const { getEffectivePermissions } = await import("@/lib/lms-features-db");
+  const { ensureUserExtraColumns } = await import("@/lib/dashboard-overview");
+  await ensureUserExtraColumns().catch(() => undefined);
+  const withPerms = await Promise.all(
+    teachers.map(async (u) => {
+      const permissions = await getEffectivePermissions(u.id, "TEACHER").catch(() => null);
+      return {
+        id: u.id,
+        name: u.name,
+        email: u.email,
+        student_number: u.student_number ?? null,
+        teacher_subject: (u as { teacher_subject?: string | null }).teacher_subject ?? null,
+        teacher_avatar_url: (u as { teacher_avatar_url?: string | null }).teacher_avatar_url ?? null,
+        teacher_bio: (u as { teacher_bio?: string | null }).teacher_bio ?? null,
+        teacher_homepage_order:
+          (u as { teacher_homepage_order?: number | null }).teacher_homepage_order ?? null,
+        permissions,
+      };
+    }),
+  );
   return NextResponse.json({
     teachersEnabled: enabled,
-    teachers: teachers.map((u) => ({
-      id: u.id,
-      name: u.name,
-      email: u.email,
-      student_number: u.student_number ?? null,
-      teacher_subject: (u as { teacher_subject?: string | null }).teacher_subject ?? null,
-      teacher_avatar_url: (u as { teacher_avatar_url?: string | null }).teacher_avatar_url ?? null,
-      teacher_homepage_order:
-        (u as { teacher_homepage_order?: number | null }).teacher_homepage_order ?? null,
-    })),
+    teachers: withPerms,
   });
 }
 
@@ -33,7 +44,7 @@ export async function POST(request: NextRequest) {
   }
   const enabled = await getTeachersFeatureEnabled();
   if (!enabled) {
-    return NextResponse.json({ error: "فعّل ميزة المدرسين أولاً من لوحة التحكم" }, { status: 400 });
+    return NextResponse.json({ error: "فعّل ميزة المدربين أولاً من لوحة التحكم" }, { status: 400 });
   }
   let body: {
     name?: string;

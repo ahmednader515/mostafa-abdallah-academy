@@ -405,6 +405,9 @@ export async function updateUser(
     guardian_number?: string | null;
     teacher_subject?: string | null;
     teacher_avatar_url?: string | null;
+    teacher_bio?: string | null;
+    is_suspended?: boolean;
+    last_login_at?: Date | null;
   }
 ): Promise<void> {
   if (data.name !== undefined) await sql`UPDATE "User" SET name = ${data.name}, updated_at = NOW() WHERE id = ${id}`;
@@ -418,7 +421,7 @@ export async function updateUser(
     try {
       await sql`UPDATE "User" SET teacher_subject = ${data.teacher_subject}, updated_at = NOW() WHERE id = ${id}`;
     } catch {
-      /* عمود غير موجود قبل تشغيل سكربت المدرسين */
+      /* عمود غير موجود قبل تشغيل سكربت المدربين */
     }
   }
   if (data.teacher_avatar_url !== undefined) {
@@ -426,6 +429,30 @@ export async function updateUser(
       await sql`UPDATE "User" SET teacher_avatar_url = ${data.teacher_avatar_url}, updated_at = NOW() WHERE id = ${id}`;
     } catch {
       /* عمود غير موجود */
+    }
+  }
+  if (data.teacher_bio !== undefined) {
+    try {
+      await sql`ALTER TABLE "User" ADD COLUMN IF NOT EXISTS teacher_bio TEXT`;
+      await sql`UPDATE "User" SET teacher_bio = ${data.teacher_bio}, updated_at = NOW() WHERE id = ${id}`;
+    } catch {
+      /* noop */
+    }
+  }
+  if (data.is_suspended !== undefined) {
+    try {
+      await sql`ALTER TABLE "User" ADD COLUMN IF NOT EXISTS is_suspended BOOLEAN NOT NULL DEFAULT false`;
+      await sql`UPDATE "User" SET is_suspended = ${data.is_suspended}, updated_at = NOW() WHERE id = ${id}`;
+    } catch {
+      /* noop */
+    }
+  }
+  if (data.last_login_at !== undefined) {
+    try {
+      await sql`ALTER TABLE "User" ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ`;
+      await sql`UPDATE "User" SET last_login_at = ${data.last_login_at}, updated_at = NOW() WHERE id = ${id}`;
+    } catch {
+      /* noop */
     }
   }
 }
@@ -712,6 +739,19 @@ export async function getReviews(): Promise<Review[]> {
   return rowsToCamel(rows as Record<string, unknown>[]) as Review[];
 }
 
+/** Lightweight reviews for homepage (avoids loading the full table into HTML). */
+export async function getReviewsForHomepage(limit = 6): Promise<Review[]> {
+  await ensureReviewImageUrlColumn();
+  const safeLimit = Math.max(1, Math.min(24, Math.floor(limit) || 6));
+  const rows = await sql`
+    SELECT id, text, author_name, author_title, avatar_letter, image_url, "order", created_at
+    FROM "Review"
+    ORDER BY "order" ASC, created_at DESC
+    LIMIT ${safeLimit}
+  `;
+  return rowsToCamel(rows as Record<string, unknown>[]) as Review[];
+}
+
 export async function getReviewById(id: string): Promise<Review | null> {
   await ensureReviewImageUrlColumn();
   const rows = await sql`SELECT * FROM "Review" WHERE id = ${id} LIMIT 1`;
@@ -924,6 +964,12 @@ const HOMEPAGE_DEFAULTS: HomepageSetting = {
   heroSlidesJson: serializeHeroSlides(ACADEMY_HOME_HERO_SLIDES),
   statsRibbonJson: serializeStatsRibbon(DEFAULT_HOMEPAGE_STATS),
   mainNavFlagsJson: serializeMainNavFlags(DEFAULT_MAIN_NAV_FLAGS),
+  platformNameColor: "#FFFFFF",
+  platformNameColor2: null,
+  showPlatformName: true,
+  showPlatformLogo: true,
+  policyCardsJson: null,
+  navTabsJson: null,
 };
 
 /** أعمدة نص قسم التعليقات في الصفحة الرئيسية */
@@ -1018,6 +1064,8 @@ async function ensureHomepageBilingualTextColumns(): Promise<void> {
       await sql`ALTER TABLE "HomepageSetting" ADD COLUMN IF NOT EXISTS hero_title_en TEXT`;
       await sql`ALTER TABLE "HomepageSetting" ADD COLUMN IF NOT EXISTS hero_slogan_en TEXT`;
       await sql`ALTER TABLE "HomepageSetting" ADD COLUMN IF NOT EXISTS page_title_en TEXT`;
+      await sql`ALTER TABLE "HomepageSetting" ADD COLUMN IF NOT EXISTS seo_description TEXT`;
+      await sql`ALTER TABLE "HomepageSetting" ADD COLUMN IF NOT EXISTS seo_description_en TEXT`;
       await sql`ALTER TABLE "HomepageSetting" ADD COLUMN IF NOT EXISTS social_right_label_en TEXT`;
       await sql`ALTER TABLE "HomepageSetting" ADD COLUMN IF NOT EXISTS social_left_label_en TEXT`;
       await sql`ALTER TABLE "HomepageSetting" ADD COLUMN IF NOT EXISTS hero3_title_en TEXT`;
@@ -1214,7 +1262,7 @@ async function ensureHomepageHeroStatsNavColumns(): Promise<void> {
   });
 }
 
-/** تفعيل عرض «اختر المدرسين» وحسابات المدرسين */
+/** تفعيل عرض «اختر المدربين» وحسابات المدربين */
 export async function getTeachersFeatureEnabled(): Promise<boolean> {
   try {
     const rows = await sql`SELECT teachers_enabled FROM "HomepageSetting" WHERE id = 'default' LIMIT 1`;
@@ -1302,7 +1350,7 @@ export function selectTeachersForHomepagePreview<T extends { id: string; name: s
   return [...featured, ...rest].slice(0, max);
 }
 
-/** حفظ المدرسين الظاهرين أولاً في قسم الرئيسية (0–4 معرفات بالترتيب) */
+/** حفظ المدربين الظاهرين أولاً في قسم الرئيسية (0–4 معرفات بالترتيب) */
 export async function setTeacherHomepageFeaturedSlots(orderedIds: string[]): Promise<void> {
   await ensureTeacherHomepageOrderColumn();
   const cleaned = orderedIds.map((x) => String(x ?? "").trim()).filter(Boolean);
@@ -1312,7 +1360,7 @@ export async function setTeacherHomepageFeaturedSlots(orderedIds: string[]): Pro
     unique.push(id);
   }
   if (unique.length > HOME_TEACHER_PREVIEW_MAX) {
-    throw new Error(`لا يزيد عن ${HOME_TEACHER_PREVIEW_MAX} مدرسين في الرئيسية`);
+    throw new Error(`لا يزيد عن ${HOME_TEACHER_PREVIEW_MAX} مدربين في الرئيسية`);
   }
   for (const id of unique) {
     const u = await getUserById(id);
@@ -1328,7 +1376,7 @@ export async function setTeacherHomepageFeaturedSlots(orderedIds: string[]): Pro
   }
 }
 
-/** كل حسابات المدرسين — للصفحة الرئيسية (حتى من دون كورس منشور) + دوراته المنشورة داخل البطاقة */
+/** كل حسابات المدربين — للصفحة الرئيسية (حتى من دون كورس منشور) + دوراته المنشورة داخل البطاقة */
 export async function listTeachersForHomepage(): Promise<TeacherHomepageRow[]> {
   try {
     await ensureTeacherHomepageOrderColumn().catch(() => {});
@@ -1391,7 +1439,7 @@ export async function listTeachersForHomepage(): Promise<TeacherHomepageRow[]> {
 }
 
 /**
- * عند تفعيل «تعدد المدرسين»: معرفات حسابات TEACHER التي يُستبعد دوراتها من القوائم العامة
+ * عند تفعيل «تعدد المدربين»: معرفات حسابات TEACHER التي يُستبعد دوراتها من القوائم العامة
  * (تُعرض ضمن بطاقة المدرس أو عند ?teacher= فقط).
  */
 export async function getTeacherIdsExcludedFromPublicCourseLists(): Promise<Set<string>> {
@@ -1567,6 +1615,14 @@ async function getHomepageSettingsUncached(): Promise<HomepageSetting> {
       pageTitleEn:
         row.page_title_en != null && String(row.page_title_en).trim() !== ""
           ? String(row.page_title_en).trim().slice(0, 300)
+          : null,
+      seoDescription:
+        row.seo_description != null && String(row.seo_description).trim() !== ""
+          ? String(row.seo_description).trim().slice(0, 1000)
+          : null,
+      seoDescriptionEn:
+        row.seo_description_en != null && String(row.seo_description_en).trim() !== ""
+          ? String(row.seo_description_en).trim().slice(0, 1000)
           : null,
       heroBgPreset: (c.heroBgPreset as string) ?? HOMEPAGE_DEFAULTS.heroBgPreset,
       heroBgCustomFrom: (() => {
@@ -1957,6 +2013,39 @@ async function getHomepageSettingsUncached(): Promise<HomepageSetting> {
         if (s.length > 0) return s.slice(0, 2000);
         return HOMEPAGE_DEFAULTS.mainNavFlagsJson ?? null;
       })(),
+      platformNameColor: (() => {
+        const raw = row.platform_name_color ?? (c as { platformNameColor?: unknown }).platformNameColor;
+        const s = raw != null ? String(raw).trim() : "";
+        return s || HOMEPAGE_DEFAULTS.platformNameColor || null;
+      })(),
+      platformNameColor2: (() => {
+        const raw =
+          row.platform_name_color_2 ?? (c as { platformNameColor2?: unknown }).platformNameColor2;
+        const s = raw != null ? String(raw).trim() : "";
+        return s || null;
+      })(),
+      showPlatformName: (() => {
+        const raw =
+          row.show_platform_name ?? (c as { showPlatformName?: unknown }).showPlatformName;
+        if (raw === false || raw === "false" || raw === 0) return false;
+        return true;
+      })(),
+      showPlatformLogo: (() => {
+        const raw =
+          row.show_platform_logo ?? (c as { showPlatformLogo?: unknown }).showPlatformLogo;
+        if (raw === false || raw === "false" || raw === 0) return false;
+        return true;
+      })(),
+      policyCardsJson: (() => {
+        const raw = row.policy_cards_json ?? (c as { policyCardsJson?: unknown }).policyCardsJson;
+        const s = raw != null ? String(raw).trim() : "";
+        return s.length > 0 ? s.slice(0, 100000) : null;
+      })(),
+      navTabsJson: (() => {
+        const raw = row.nav_tabs_json ?? (c as { navTabsJson?: unknown }).navTabsJson;
+        const s = raw != null ? String(raw).trim() : "";
+        return s.length > 0 ? s.slice(0, 50000) : null;
+      })(),
     };
   } catch {
     return HOMEPAGE_DEFAULTS;
@@ -2111,6 +2200,12 @@ export async function updateHomepageSettings(data: {
   hero_slides_json?: string | null;
   stats_ribbon_json?: string | null;
   main_nav_flags_json?: string | null;
+  platform_name_color?: string | null;
+  platform_name_color_2?: string | null;
+  show_platform_name?: boolean;
+  show_platform_logo?: boolean;
+  policy_cards_json?: string | null;
+  nav_tabs_json?: string | null;
 }): Promise<void> {
   await ensureHomepageHeroTemplateColumns();
   await ensureHomepageHeroSliderCourseIdColumns();
@@ -2501,6 +2596,24 @@ export async function updateHomepageSettings(data: {
     await ensureHomepageHeroStatsNavColumns();
     await sql`UPDATE "HomepageSetting" SET main_nav_flags_json = ${data.main_nav_flags_json}, updated_at = NOW() WHERE id = 'default'`;
   }
+  if (data.platform_name_color !== undefined) {
+    await sql`UPDATE "HomepageSetting" SET platform_name_color = ${data.platform_name_color}, updated_at = NOW() WHERE id = 'default'`;
+  }
+  if (data.platform_name_color_2 !== undefined) {
+    await sql`UPDATE "HomepageSetting" SET platform_name_color_2 = ${data.platform_name_color_2}, updated_at = NOW() WHERE id = 'default'`;
+  }
+  if (data.show_platform_name !== undefined) {
+    await sql`UPDATE "HomepageSetting" SET show_platform_name = ${data.show_platform_name}, updated_at = NOW() WHERE id = 'default'`;
+  }
+  if (data.show_platform_logo !== undefined) {
+    await sql`UPDATE "HomepageSetting" SET show_platform_logo = ${data.show_platform_logo}, updated_at = NOW() WHERE id = 'default'`;
+  }
+  if (data.policy_cards_json !== undefined) {
+    await sql`UPDATE "HomepageSetting" SET policy_cards_json = ${data.policy_cards_json}, updated_at = NOW() WHERE id = 'default'`;
+  }
+  if (data.nav_tabs_json !== undefined) {
+    await sql`UPDATE "HomepageSetting" SET nav_tabs_json = ${data.nav_tabs_json}, updated_at = NOW() WHERE id = 'default'`;
+  }
   if (data.add_balance_title !== undefined) {
     await sql`UPDATE "HomepageSetting" SET add_balance_title = ${data.add_balance_title}, updated_at = NOW() WHERE id = 'default'`;
   }
@@ -2576,6 +2689,8 @@ async function ensurePlatformSubscriptionSchema(): Promise<void> {
       )
     `;
     await sql`ALTER TABLE "SubscriptionPlan" ADD COLUMN IF NOT EXISTS duration_value INT NOT NULL DEFAULT 1`;
+    await sql`ALTER TABLE "SubscriptionPlan" ADD COLUMN IF NOT EXISTS covers_courses BOOLEAN NOT NULL DEFAULT true`;
+    await sql`ALTER TABLE "SubscriptionPlan" ADD COLUMN IF NOT EXISTS covers_library BOOLEAN NOT NULL DEFAULT true`;
     // إزالة قيد المدد القديم إن وُجد لتسمح بـ months_3/6/9
     try {
       await sql`
@@ -2679,6 +2794,8 @@ async function ensureStoreProductsSchema(): Promise<void> {
     await sql`ALTER TABLE "StoreProduct" ADD COLUMN IF NOT EXISTS category_id TEXT`;
     await sql`ALTER TABLE "StoreProduct" ADD COLUMN IF NOT EXISTS content_type TEXT NOT NULL DEFAULT 'file'`;
     await sql`ALTER TABLE "StoreProduct" ADD COLUMN IF NOT EXISTS article_body TEXT`;
+    await sql`ALTER TABLE "StoreProduct" ADD COLUMN IF NOT EXISTS file_kind TEXT NOT NULL DEFAULT 'other'`;
+    await sql`ALTER TABLE "StoreProduct" ADD COLUMN IF NOT EXISTS access_mode TEXT NOT NULL DEFAULT 'free'`;
     storeProductsSchemaEnsured = true;
   } catch {
     /* DDL غير متاح */
@@ -2740,6 +2857,19 @@ export async function listStoreProductsPublic(): Promise<StoreProductRow[]> {
   }
 }
 
+/** Homepage CTA only needs a count — avoid loading every product + article body. */
+export async function countActiveStoreProductsPublic(): Promise<number> {
+  try {
+    await ensureStoreProductsSchema();
+    const rows = await sql`
+      SELECT COUNT(*)::int AS c FROM "StoreProduct" WHERE is_active = true
+    `;
+    return Number((rows[0] as { c?: number } | undefined)?.c ?? 0);
+  } catch {
+    return 0;
+  }
+}
+
 export async function listStoreProductsAll(): Promise<StoreProductRow[]> {
   await ensureStoreProductsSchema();
   const rows = await sql`
@@ -2777,6 +2907,8 @@ export async function createStoreProduct(data: {
   category_id?: string | null;
   content_type?: "file" | "article";
   article_body?: string | null;
+  file_kind?: string | null;
+  access_mode?: string | null;
 }): Promise<{ id: string }> {
   await ensureStoreProductsSchema();
   const id = generateId();
@@ -2801,6 +2933,16 @@ export async function createStoreProduct(data: {
       ${data.article_body?.trim() || null}
     )
   `;
+  try {
+    if (data.file_kind) {
+      await sql`UPDATE "StoreProduct" SET file_kind = ${data.file_kind} WHERE id = ${id}`;
+    }
+    if (data.access_mode) {
+      await sql`UPDATE "StoreProduct" SET access_mode = ${data.access_mode} WHERE id = ${id}`;
+    }
+  } catch {
+    /* columns may not exist yet */
+  }
   return { id };
 }
 
@@ -3049,7 +3191,10 @@ export async function deleteStorePurchaseById(purchaseId: string): Promise<void>
   await sql`DELETE FROM "UserStorePurchase" WHERE id = ${purchaseId.trim()}`;
 }
 
-export async function buyStoreProduct(userId: string, productId: string): Promise<{ purchased: boolean; alreadyOwned: boolean }> {
+export async function buyStoreProduct(
+  userId: string,
+  productId: string,
+): Promise<{ purchased: boolean; alreadyOwned: boolean; pricePaid: number }> {
   await ensureStorePurchasesSchema();
   const uid = userId.trim();
   const pid = productId.trim();
@@ -3058,7 +3203,7 @@ export async function buyStoreProduct(userId: string, productId: string): Promis
   const existing = await sql`
     SELECT id FROM "UserStorePurchase" WHERE user_id = ${uid} AND product_id = ${pid} LIMIT 1
   `;
-  if ((existing as unknown[]).length > 0) return { purchased: true, alreadyOwned: true };
+  if ((existing as unknown[]).length > 0) return { purchased: true, alreadyOwned: true, pricePaid: 0 };
 
   const productRows = await sql`
     SELECT id, price, is_active FROM "StoreProduct" WHERE id = ${pid} LIMIT 1
@@ -3084,7 +3229,7 @@ export async function buyStoreProduct(userId: string, productId: string): Promis
     VALUES (${purchaseId}, ${uid}, ${pid}, ${payable})
     ON CONFLICT (user_id, product_id) DO NOTHING
   `;
-  return { purchased: true, alreadyOwned: false };
+  return { purchased: true, alreadyOwned: false, pricePaid: payable };
 }
 
 export type SubscriptionPlanPublic = {
@@ -3106,6 +3251,7 @@ function addSubscriptionDuration(from: Date, kind: SubscriptionDurationKind, dur
   else if (kind === "months_3") d.setUTCDate(d.getUTCDate() + 90 * n);
   else if (kind === "months_6") d.setUTCDate(d.getUTCDate() + 180 * n);
   else if (kind === "months_9") d.setUTCDate(d.getUTCDate() + 270 * n);
+  else if (kind === "custom_days") d.setUTCDate(d.getUTCDate() + n);
   else d.setUTCDate(d.getUTCDate() + 365 * n);
   return d;
 }
@@ -3161,7 +3307,7 @@ export async function createSubscriptionPlan(data: {
   await ensurePlatformSubscriptionSchema();
   const id = generateId();
   const dk = data.duration_kind;
-  const allowed: SubscriptionDurationKind[] = ["week", "month", "year", "months_3", "months_6", "months_9"];
+  const allowed: SubscriptionDurationKind[] = ["week", "month", "year", "months_3", "months_6", "months_9", "custom_days"];
   if (!allowed.includes(dk)) throw new Error("مدة غير صالحة");
   const durationValue = Math.max(1, Number((data as { duration_value?: number }).duration_value) || 1);
   try {
@@ -3216,7 +3362,7 @@ export async function updateSubscriptionPlan(
     await sql`UPDATE "SubscriptionPlan" SET image_url = ${data.image_url?.trim() || null}, updated_at = NOW() WHERE id = ${id}`;
   if (data.duration_kind !== undefined) {
     const dk = data.duration_kind;
-    const allowed: SubscriptionDurationKind[] = ["week", "month", "year", "months_3", "months_6", "months_9"];
+    const allowed: SubscriptionDurationKind[] = ["week", "month", "year", "months_3", "months_6", "months_9", "custom_days"];
     if (!allowed.includes(dk)) throw new Error("مدة غير صالحة");
     await sql`UPDATE "SubscriptionPlan" SET duration_kind = ${dk}, updated_at = NOW() WHERE id = ${id}`;
   }
@@ -5395,7 +5541,7 @@ export async function getUsersByRole(role: UserRole): Promise<User[]> {
 export async function deleteTeacherUser(userId: string): Promise<void> {
   const u = await getUserById(userId);
   if (!u) throw new Error("المستخدم غير موجود");
-  if (u.role !== "TEACHER") throw new Error("يمكن حذف حسابات المدرسين فقط");
+  if (u.role !== "TEACHER") throw new Error("يمكن حذف حسابات المدربين فقط");
   await sql`DELETE FROM "User" WHERE id = ${userId}`;
 }
 
@@ -5571,6 +5717,11 @@ export async function createMessage(data: {
   file_name?: string | null;
 }): Promise<Message> {
   const id = generateId();
+  try {
+    await sql`ALTER TABLE "Message" ADD COLUMN IF NOT EXISTS read_at TIMESTAMPTZ`;
+  } catch {
+    /* noop */
+  }
   await sql`
     INSERT INTO "Message" (id, conversation_id, sender_id, message_type, content, file_url, file_name, created_at)
     VALUES (${id}, ${data.conversation_id}, ${data.sender_id}, ${data.message_type}, ${data.content ?? null}, ${data.file_url ?? null}, ${data.file_name ?? null}, NOW())
@@ -5578,6 +5729,42 @@ export async function createMessage(data: {
   await sql`UPDATE "Conversation" SET updated_at = NOW() WHERE id = ${data.conversation_id}`;
   const rows = await sql`SELECT * FROM "Message" WHERE id = ${id} LIMIT 1`;
   return rowToCamel(rows[0] as Record<string, unknown>) as Message;
+}
+
+export async function getUnreadMessageCount(userId: string): Promise<number> {
+  try {
+    await sql`ALTER TABLE "Message" ADD COLUMN IF NOT EXISTS read_at TIMESTAMPTZ`;
+  } catch {
+    /* noop */
+  }
+  try {
+    const rows = await sql`
+      SELECT COUNT(*)::int AS count
+      FROM "Message" m
+      INNER JOIN "Conversation" c ON c.id = m.conversation_id
+      WHERE m.sender_id <> ${userId}
+        AND m.read_at IS NULL
+        AND (c.staff_user_id = ${userId} OR c.student_user_id = ${userId})
+    `;
+    return Number((rows[0] as { count?: number })?.count ?? 0);
+  } catch {
+    return 0;
+  }
+}
+
+export async function markConversationMessagesRead(conversationId: string, userId: string): Promise<void> {
+  try {
+    await sql`ALTER TABLE "Message" ADD COLUMN IF NOT EXISTS read_at TIMESTAMPTZ`;
+  } catch {
+    /* noop */
+  }
+  await sql`
+    UPDATE "Message"
+    SET read_at = NOW()
+    WHERE conversation_id = ${conversationId}
+      AND sender_id <> ${userId}
+      AND read_at IS NULL
+  `;
 }
 
 // ─── Library categories ───────────────────────────────────────────────────────
@@ -5729,6 +5916,13 @@ async function ensureJobPostingSchema(): Promise<void> {
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )
     `;
+    await sql`ALTER TABLE "JobPosting" ADD COLUMN IF NOT EXISTS image_url TEXT`;
+    await sql`ALTER TABLE "JobPosting" ADD COLUMN IF NOT EXISTS email TEXT`;
+    await sql`ALTER TABLE "JobPosting" ADD COLUMN IF NOT EXISTS phone TEXT`;
+    await sql`ALTER TABLE "JobPosting" ADD COLUMN IF NOT EXISTS whatsapp TEXT`;
+    await sql`ALTER TABLE "JobPosting" ADD COLUMN IF NOT EXISTS location_en TEXT`;
+    await sql`ALTER TABLE "JobPosting" ADD COLUMN IF NOT EXISTS job_type_ar TEXT`;
+    await sql`ALTER TABLE "JobPosting" ADD COLUMN IF NOT EXISTS job_type_en TEXT`;
     await sql`CREATE INDEX IF NOT EXISTS "JobPosting_published_order_idx" ON "JobPosting"(is_published, "order")`;
     jobPostingSchemaEnsured = true;
   } catch {
@@ -5744,6 +5938,13 @@ export type JobPostingRow = {
   descriptionAr: string | null;
   location: string | null;
   jobType: string | null;
+  imageUrl: string | null;
+  email: string | null;
+  phone: string | null;
+  whatsapp: string | null;
+  locationEn: string | null;
+  jobTypeAr: string | null;
+  jobTypeEn: string | null;
   isPublished: boolean;
   order: number;
   createdAt: string;
@@ -5759,6 +5960,13 @@ function mapJobPosting(r: Record<string, unknown>): JobPostingRow {
     descriptionAr: r.description_ar ? String(r.description_ar) : null,
     location: r.location ? String(r.location) : null,
     jobType: r.job_type ? String(r.job_type) : null,
+    imageUrl: r.image_url ? String(r.image_url) : null,
+    email: r.email ? String(r.email) : null,
+    phone: r.phone ? String(r.phone) : null,
+    whatsapp: r.whatsapp ? String(r.whatsapp) : null,
+    locationEn: r.location_en ? String(r.location_en) : null,
+    jobTypeAr: r.job_type_ar ? String(r.job_type_ar) : null,
+    jobTypeEn: r.job_type_en ? String(r.job_type_en) : null,
     isPublished: Boolean(r.is_published),
     order: Number(r.order ?? 0),
     createdAt:
@@ -5777,6 +5985,7 @@ export async function listPublishedJobs(): Promise<JobPostingRow[]> {
     await ensureJobPostingSchema();
     const rows = await sql`
       SELECT id, title, title_ar, description, description_ar, location, job_type,
+             image_url, email, phone, whatsapp, location_en, job_type_ar, job_type_en,
              is_published, "order", created_at, updated_at
       FROM "JobPosting"
       WHERE is_published = true
@@ -5788,11 +5997,46 @@ export async function listPublishedJobs(): Promise<JobPostingRow[]> {
   }
 }
 
+/** Slim job cards for homepage carousels. */
+export async function listPublishedJobsForHomepage(limit = 12): Promise<
+  Array<{
+    id: string;
+    title: string;
+    titleAr: string | null;
+    location: string | null;
+    jobType: string | null;
+    imageUrl: string | null;
+  }>
+> {
+  try {
+    await ensureJobPostingSchema();
+    const safeLimit = Math.max(1, Math.min(40, Math.floor(limit) || 12));
+    const rows = await sql`
+      SELECT id, title, title_ar, location, job_type, image_url
+      FROM "JobPosting"
+      WHERE is_published = true
+      ORDER BY "order" ASC, created_at DESC
+      LIMIT ${safeLimit}
+    `;
+    return (rows as Record<string, unknown>[]).map((r) => ({
+      id: String(r.id),
+      title: String(r.title ?? ""),
+      titleAr: r.title_ar != null ? String(r.title_ar) : null,
+      location: r.location != null ? String(r.location) : null,
+      jobType: r.job_type != null ? String(r.job_type) : null,
+      imageUrl: r.image_url != null ? String(r.image_url) : null,
+    }));
+  } catch {
+    return [];
+  }
+}
+
 export async function listAllJobs(): Promise<JobPostingRow[]> {
   try {
     await ensureJobPostingSchema();
     const rows = await sql`
       SELECT id, title, title_ar, description, description_ar, location, job_type,
+             image_url, email, phone, whatsapp, location_en, job_type_ar, job_type_en,
              is_published, "order", created_at, updated_at
       FROM "JobPosting"
       ORDER BY "order" ASC, created_at DESC
@@ -5809,6 +6053,7 @@ export async function getJobById(id: string): Promise<JobPostingRow | null> {
   if (!jid) return null;
   const rows = await sql`
     SELECT id, title, title_ar, description, description_ar, location, job_type,
+           image_url, email, phone, whatsapp, location_en, job_type_ar, job_type_en,
            is_published, "order", created_at, updated_at
     FROM "JobPosting"
     WHERE id = ${jid}
@@ -5825,6 +6070,13 @@ export async function createJob(data: {
   description_ar?: string | null;
   location?: string | null;
   job_type?: string | null;
+  image_url?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  whatsapp?: string | null;
+  location_en?: string | null;
+  job_type_ar?: string | null;
+  job_type_en?: string | null;
   is_published?: boolean;
   order?: number;
 }): Promise<{ id: string }> {
@@ -5834,7 +6086,11 @@ export async function createJob(data: {
   const maxOrder = Number((maxRows[0] as { max_order?: number })?.max_order ?? -1);
   const order = data.order ?? maxOrder + 1;
   await sql`
-    INSERT INTO "JobPosting" (id, title, title_ar, description, description_ar, location, job_type, is_published, "order")
+    INSERT INTO "JobPosting" (
+      id, title, title_ar, description, description_ar, location, job_type,
+      image_url, email, phone, whatsapp, location_en, job_type_ar, job_type_en,
+      is_published, "order"
+    )
     VALUES (
       ${id},
       ${data.title.trim()},
@@ -5843,6 +6099,13 @@ export async function createJob(data: {
       ${data.description_ar?.trim() || null},
       ${data.location?.trim() || null},
       ${data.job_type?.trim() || null},
+      ${data.image_url?.trim() || null},
+      ${data.email?.trim() || null},
+      ${data.phone?.trim() || null},
+      ${data.whatsapp?.trim() || null},
+      ${data.location_en?.trim() || null},
+      ${data.job_type_ar?.trim() || null},
+      ${data.job_type_en?.trim() || null},
       ${data.is_published === true},
       ${order}
     )
@@ -5859,6 +6122,13 @@ export async function updateJob(
     description_ar?: string | null;
     location?: string | null;
     job_type?: string | null;
+    image_url?: string | null;
+    email?: string | null;
+    phone?: string | null;
+    whatsapp?: string | null;
+    location_en?: string | null;
+    job_type_ar?: string | null;
+    job_type_en?: string | null;
     is_published?: boolean;
     order?: number;
   },
@@ -5872,6 +6142,13 @@ export async function updateJob(
   if (data.description_ar !== undefined) await sql`UPDATE "JobPosting" SET description_ar = ${data.description_ar?.trim() || null}, updated_at = NOW() WHERE id = ${jid}`;
   if (data.location !== undefined) await sql`UPDATE "JobPosting" SET location = ${data.location?.trim() || null}, updated_at = NOW() WHERE id = ${jid}`;
   if (data.job_type !== undefined) await sql`UPDATE "JobPosting" SET job_type = ${data.job_type?.trim() || null}, updated_at = NOW() WHERE id = ${jid}`;
+  if (data.image_url !== undefined) await sql`UPDATE "JobPosting" SET image_url = ${data.image_url?.trim() || null}, updated_at = NOW() WHERE id = ${jid}`;
+  if (data.email !== undefined) await sql`UPDATE "JobPosting" SET email = ${data.email?.trim() || null}, updated_at = NOW() WHERE id = ${jid}`;
+  if (data.phone !== undefined) await sql`UPDATE "JobPosting" SET phone = ${data.phone?.trim() || null}, updated_at = NOW() WHERE id = ${jid}`;
+  if (data.whatsapp !== undefined) await sql`UPDATE "JobPosting" SET whatsapp = ${data.whatsapp?.trim() || null}, updated_at = NOW() WHERE id = ${jid}`;
+  if (data.location_en !== undefined) await sql`UPDATE "JobPosting" SET location_en = ${data.location_en?.trim() || null}, updated_at = NOW() WHERE id = ${jid}`;
+  if (data.job_type_ar !== undefined) await sql`UPDATE "JobPosting" SET job_type_ar = ${data.job_type_ar?.trim() || null}, updated_at = NOW() WHERE id = ${jid}`;
+  if (data.job_type_en !== undefined) await sql`UPDATE "JobPosting" SET job_type_en = ${data.job_type_en?.trim() || null}, updated_at = NOW() WHERE id = ${jid}`;
   if (data.is_published !== undefined) await sql`UPDATE "JobPosting" SET is_published = ${data.is_published}, updated_at = NOW() WHERE id = ${jid}`;
   if (data.order !== undefined) await sql`UPDATE "JobPosting" SET "order" = ${data.order}, updated_at = NOW() WHERE id = ${jid}`;
 }
@@ -5914,6 +6191,17 @@ export type PlatformSearchResult = {
 export async function searchPlatform(q: string): Promise<PlatformSearchResult[]> {
   const term = q.trim();
   if (!term) return [];
+  let flags = { enabled: true, courses: true, forum: true, library: true, jobs: true };
+  try {
+    const { parseSearchFlags } = await import("@/lib/search-flags");
+    await sql`ALTER TABLE "HomepageSetting" ADD COLUMN IF NOT EXISTS search_flags_json TEXT`.catch(() => undefined);
+    const rows = await sql`SELECT search_flags_json FROM "HomepageSetting" WHERE id = 'default' LIMIT 1`;
+    const raw = (rows[0] as { search_flags_json?: string } | undefined)?.search_flags_json;
+    flags = parseSearchFlags(raw);
+  } catch {
+    /* defaults */
+  }
+  if (!flags.enabled) return [];
   const likePattern = "%" + term + "%";
   const limit = 8;
   const results: PlatformSearchResult[] = [];
@@ -5940,6 +6228,7 @@ export async function searchPlatform(q: string): Promise<PlatformSearchResult[]>
     /* جدول غير جاهز */
   }
 
+  if (flags.courses) {
   try {
     await ensureLessonRatingsSchema();
     const courseRows = await sql`
@@ -5966,6 +6255,7 @@ export async function searchPlatform(q: string): Promise<PlatformSearchResult[]>
     }
   } catch {
     /* جدول غير جاهز */
+  }
   }
 
   try {
@@ -5998,6 +6288,7 @@ export async function searchPlatform(q: string): Promise<PlatformSearchResult[]>
     /* جدول غير جاهز */
   }
 
+  if (flags.library) {
   try {
     await ensureStoreProductsSchema();
     const productRows = await sql`
@@ -6018,6 +6309,7 @@ export async function searchPlatform(q: string): Promise<PlatformSearchResult[]>
     }
   } catch {
     /* جدول غير جاهز */
+  }
   }
 
   try {

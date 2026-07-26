@@ -11,9 +11,9 @@ export async function Footer({
   footerCopyright?: string;
 }) {
   const t = await getServerTranslator();
-  const defaultTitle = t("footer.defaultTitle", "Mostafa Abdullah academy");
+  const defaultTitle = t("footer.defaultTitle", "WorldWay");
   const defaultTagline = t("footer.defaultTagline", "تعلم بأسلوب حديث ومنهجية واضحة");
-  const defaultCopyright = t("footer.defaultCopyright", "Mostafa Abdullah academy. جميع الحقوق محفوظة.");
+  const defaultCopyright = t("footer.defaultCopyright", "WorldWay. جميع الحقوق محفوظة.");
   const year = new Date().getFullYear();
   const copyrightText = footerCopyright?.trim() || defaultCopyright;
   return (

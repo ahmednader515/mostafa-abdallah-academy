@@ -4,7 +4,16 @@ import { authOptions } from "@/lib/auth";
 import { uploadToR2, isR2Configured, getMissingR2EnvVars } from "@/lib/r2";
 
 const MAX_SIZE = 5 * 1024 * 1024; // 5 MB
-const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+const ALLOWED_TYPES = [
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+  "image/x-icon",
+  "image/vnd.microsoft.icon",
+  "image/svg+xml",
+];
+const ALLOWED_EXT = ["jpg", "jpeg", "png", "webp", "gif", "ico", "svg"];
 
 export async function POST(request: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -38,9 +47,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "لم يُرفع أي ملف" }, { status: 400 });
   }
 
-  if (!ALLOWED_TYPES.includes(file.type)) {
+  const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
+  const typeOk = ALLOWED_TYPES.includes(file.type) || ALLOWED_EXT.includes(ext);
+  if (!typeOk) {
     return NextResponse.json(
-      { error: "نوع الملف غير مدعوم. استخدم: jpeg, png, webp, gif" },
+      { error: "نوع الملف غير مدعوم. استخدم: jpeg, png, webp, gif, ico, svg" },
       { status: 400 }
     );
   }
@@ -52,8 +63,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
-  const safeExt = ["jpg", "jpeg", "png", "webp", "gif"].includes(ext) ? ext : "jpg";
+  const safeExt = ALLOWED_EXT.includes(ext) ? ext : "jpg";
   const key = `courses/${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${safeExt}`;
 
   try {

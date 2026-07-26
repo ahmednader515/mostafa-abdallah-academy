@@ -74,6 +74,8 @@ export function LibraryAdminClient({
   const [imageUrl, setImageUrl] = useState("");
   const [pdfUrl, setPdfUrl] = useState("");
   const [contentType, setContentType] = useState<"file" | "article">("file");
+  const [fileKind, setFileKind] = useState("pdf");
+  const [accessMode, setAccessMode] = useState<"free" | "requires_registration" | "library_subscription">("free");
   const [categoryId, setCategoryId] = useState("");
   const [articleBody, setArticleBody] = useState("");
   const [imageUploading, setImageUploading] = useState(false);
@@ -204,6 +206,8 @@ export function LibraryAdminClient({
         imageUrl: imageUrl.trim() || null,
         pdfUrl: pdfUrl.trim() || null,
         contentType,
+        fileKind,
+        accessMode,
         categoryId: categoryId.trim() || null,
         articleBody: articleBody.trim() || null,
       }),
@@ -580,6 +584,14 @@ export function LibraryAdminClient({
       </form>
 
       <form onSubmit={(e) => void createProduct(e)} className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] p-6 space-y-3">
+        {products.length >= 200 ? (
+          <div className="rounded border border-amber-400/50 bg-amber-500/10 px-3 py-2 text-sm text-amber-800 dark:text-amber-200">
+            {t(
+              `${S}.driveWarning`,
+              "Library is getting large. Consider hosting large files on Google Drive and linking them here.",
+            )}
+          </div>
+        ) : null}
         <h3 className="text-lg font-semibold text-[var(--color-foreground)]">{t(`${S}.addProductTitle`)}</h3>
         <div>
           {imageUrl ? (
@@ -610,6 +622,19 @@ export function LibraryAdminClient({
           <select value={contentType} onChange={(e) => setContentType(e.target.value as "file" | "article")} className="rounded-[var(--radius-btn)] border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2">
             <option value="file">{t(`${S}.contentTypeFile`, "File / PDF")}</option>
             <option value="article">{t(`${S}.contentTypeArticle`, "Article")}</option>
+          </select>
+          <select value={fileKind} onChange={(e) => setFileKind(e.target.value)} className="rounded-[var(--radius-btn)] border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2">
+            <option value="pdf">PDF</option>
+            <option value="word">Word</option>
+            <option value="excel">Excel</option>
+            <option value="powerpoint">PowerPoint</option>
+            <option value="image">Image</option>
+            <option value="other">Other</option>
+          </select>
+          <select value={accessMode} onChange={(e) => setAccessMode(e.target.value as typeof accessMode)} className="rounded-[var(--radius-btn)] border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2">
+            <option value="free">{t(`${S}.accessFree`, "Free")}</option>
+            <option value="requires_registration">{t(`${S}.accessRegistered`, "Requires registration")}</option>
+            <option value="library_subscription">{t(`${S}.accessLibrarySub`, "Library subscription")}</option>
           </select>
           <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)} className="rounded-[var(--radius-btn)] border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2">
             <option value="">{t(`${S}.noCategory`, "No category")}</option>

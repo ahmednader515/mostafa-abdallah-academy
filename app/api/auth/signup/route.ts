@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { hash } from "bcryptjs";
 import { getUserByEmail, createUser } from "@/lib/db";
 import { validatePhoneForCountry } from "@/lib/phone/countries";
+import { trackMetaCapiServer } from "@/lib/meta-capi-server";
 import { z } from "zod";
 
 const signupSchema = z.object({
@@ -11,6 +12,7 @@ const signupSchema = z.object({
   phone_country: z.string().min(2, "كود الدولة مطلوب"),
   phone_national: z.string().min(1, "رقم الهاتف مطلوب"),
   student_number: z.string().optional(),
+  metaEventId: z.string().optional(),
 });
 
 export async function POST(request: NextRequest) {
@@ -23,7 +25,8 @@ export async function POST(request: NextRequest) {
         { status: 400 },
       );
     }
-    const { email, password, name, phone_country, phone_national, student_number } = parsed.data;
+    const { email, password, name, phone_country, phone_national, student_number, metaEventId } =
+      parsed.data;
 
     const phoneCheck = validatePhoneForCountry(phone_country, phone_national);
     if (!phoneCheck.ok) {
@@ -50,6 +53,18 @@ export async function POST(request: NextRequest) {
       student_number: phoneCheck.stored,
       guardian_number: null,
     });
+
+    const eventId = metaEventId?.trim() || request.headers.get("x-meta-event-id")?.trim() || undefined;
+    await trackMetaCapiServer("CompleteRegistration", {
+      eventId,
+      request,
+      customData: { status: "completed", content_name: "student_signup" },
+      userData: {
+        email,
+        phone: phoneCheck.stored,
+        firstName: name.trim().split(/\s+/)[0] || name,
+      },
+    }).catch(() => undefined);
 
     return NextResponse.json({ success: true });
   } catch (e) {

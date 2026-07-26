@@ -2,7 +2,7 @@
 
 import { SubscriptionPlanCard, type SubscriptionPlanCardData } from "@/components/SubscriptionPlanCard";
 
-/** قسم الصفحة الرئيسية «الاشتراكات المتاحة» — نفس سلم العناوين مثل «اختر المدرسين» */
+/** قسم الصفحة الرئيسية «الاشتراكات المتاحة» — نفس سلم العناوين مثل «اختر المدربين» */
 export function HomeSubscriptionsSection({
   enabled,
   plans,
@@ -22,7 +22,6 @@ export function HomeSubscriptionsSection({
   return (
     <section
       className="home-teachers-hero-blend py-14"
-      dir="rtl"
       aria-labelledby="home-subscriptions-heading"
     >
       <div className="mx-auto max-w-6xl px-4 sm:px-6">

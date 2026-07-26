@@ -6,6 +6,7 @@ import { FormattedPrice } from "@/components/FormattedPrice";
 import { HorizontalScrollRow } from "@/components/HorizontalScrollRow";
 import { useT } from "@/components/LocaleProvider";
 import type { LibraryCategory, StoreProduct } from "@/lib/types";
+import { newAnalyticsEventId, trackMetaEvent } from "@/lib/analytics-events";
 
 function ProductCard({
   product,
@@ -161,15 +162,41 @@ export function LibraryBrowseClient({
   async function buy(productId: string) {
     setError("");
     setLoadingId(productId);
+    const product = products.find((p) => p.id === productId);
+    trackMetaEvent("InitiateCheckout", {
+      content_ids: [productId],
+      content_type: "product",
+      content_name: product?.title || "library_item",
+      value: product ? Number(product.price) : undefined,
+      currency: "EGP",
+      num_items: 1,
+    });
+    const purchaseEventId = newAnalyticsEventId();
     try {
       const res = await fetch("/api/store/purchase", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ productId }),
+        headers: {
+          "Content-Type": "application/json",
+          "x-meta-event-id": purchaseEventId,
+        },
+        body: JSON.stringify({ productId, metaEventId: purchaseEventId }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error ?? t("library.buyFailed", "Purchase failed"));
       setOwnedIds((prev) => (prev.includes(productId) ? prev : [...prev, productId]));
+      trackMetaEvent(
+        "Purchase",
+        {
+          content_ids: [productId],
+          content_type: "product",
+          content_name: product?.title || "library_item",
+          value: typeof data.pricePaid === "number" ? data.pricePaid : product ? Number(product.price) : undefined,
+          currency: "EGP",
+          num_items: 1,
+          order_id: purchaseEventId,
+        },
+        { eventId: purchaseEventId },
+      );
     } catch (e) {
       setError(e instanceof Error ? e.message : t("library.buyFailed", "Purchase failed"));
     } finally {

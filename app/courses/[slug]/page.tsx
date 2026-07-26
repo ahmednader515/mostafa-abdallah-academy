@@ -10,17 +10,20 @@ import {
   getAllowedQuizIdsForUserCourse,
   getUserById,
   getLiveStreamsByCourseId,
-  getHomepageSettings,
   hasFullCourseAccessAsStudent,
   userHasActivePlatformSubscriptionForPaidCourse,
   getLatestPlatformSubscriptionExpiry,
 } from "@/lib/db";
 import { EnrollButton } from "./EnrollButton";
 import { CoursePriceChip } from "@/components/CoursePriceChip";
+import { MetaViewContent } from "@/components/MetaViewContent";
 import { getLocaleFromCookie, getServerTranslator } from "@/lib/i18n/server";
 import { pickLocalizedText } from "@/lib/i18n/localized-field";
 
-type Props = { params: Promise<{ slug: string }> };
+type Props = {
+  params: Promise<{ slug: string }>;
+  searchParams: Promise<{ lp?: string }>;
+};
 
 /** عدم التخزين المؤقت — دائماً التحقق من وجود الدورة (تجنب 404 للدورات المحذوفة) */
 export const dynamic = "force-dynamic";
@@ -72,11 +75,13 @@ export async function generateMetadata({ params }: Props) {
   };
 }
 
-export default async function CoursePage({ params }: Props) {
+export default async function CoursePage({ params, searchParams }: Props) {
   unstable_noStore();
   const t = await getServerTranslator();
   const locale = await getLocaleFromCookie();
   const { slug: segment } = await params;
+  const sp = await searchParams;
+  const landingSlug = sp.lp?.trim() || "";
   const decoded = decodeSlug(segment);
   const session = await getServerSession(authOptions);
   let data: Awaited<ReturnType<typeof getCourseWithContent>> = null;
@@ -147,7 +152,6 @@ export default async function CoursePage({ params }: Props) {
   const coursePrice = Number((course as Record<string, unknown>).price) || 0;
 
   const liveStreams = canAccessContent ? await getLiveStreamsByCourseId(course.id) : [];
-  const homepageSettings = await getHomepageSettings();
   const formatStreamDate = (d: Date | string) => {
     const date = typeof d === "string" ? new Date(d) : d;
     return new Intl.DateTimeFormat(locale === "ar" ? "ar-EG" : "en-US", { dateStyle: "medium", timeStyle: "short" }).format(date);
@@ -186,49 +190,16 @@ export default async function CoursePage({ params }: Props) {
         </div>
       )}
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-[280px_1fr]">
-        {/* قسم المدرس */}
-        <aside className="order-2 lg:order-1">
-          <div className="sticky top-24 rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] p-6 shadow-[var(--shadow-card)]">
-            <div className="flex flex-col items-center text-center">
-              <div className="relative mb-4">
-                <img
-                  src={homepageSettings.teacherImageUrl?.trim() || "/instructor.png"}
-                  alt={pickLocalizedText(locale, homepageSettings.heroTitle, homepageSettings.heroTitleEn) || "المدرس"}
-                  className="h-32 w-32 border-2 border-black border-dotted object-cover"
-                />
-                <div className="absolute bottom-0 right-0 h-6 w-6 rounded-full border-4 border-[var(--color-surface)] bg-[var(--color-success)]" />
-                <img
-                  src={homepageSettings.heroFloatImage1 || "/images/ruler.png"}
-                  alt=""
-                  className="float-icon float-icon-1 absolute -left-8 top-0 h-9 w-9 object-contain drop-shadow sm:-left-9 sm:h-10 sm:w-10"
-                  aria-hidden
-                />
-                <img
-                  src={homepageSettings.heroFloatImage2 || "/images/notebook.png"}
-                  alt=""
-                  className="float-icon float-icon-2 absolute -right-8 bottom-2 h-9 w-9 object-contain drop-shadow sm:-right-9 sm:h-10 sm:w-10"
-                  aria-hidden
-                />
-                <img
-                  src={homepageSettings.heroFloatImage3 || "/images/pencil.png"}
-                  alt=""
-                  className="float-icon float-icon-3 absolute -bottom-2 left-1 h-8 w-8 object-contain drop-shadow sm:left-2 sm:h-9 sm:w-9"
-                  aria-hidden
-                />
-              </div>
-              <div className="mt-2 w-full border-t border-[var(--color-border)] pt-4">
-                <p className="text-sm text-[var(--color-muted)]">
-                  {pickLocalizedText(locale, homepageSettings.heroSlogan, homepageSettings.heroSloganEn) ||
-                    t("courses.allCoursesSubtitle", "Choose the right course and start learning step by step")}
-                </p>
-              </div>
-            </div>
-          </div>
-        </aside>
-
-        {/* محتوى الكورس */}
-        <article className="order-1 lg:order-2">
+      <div className="mt-6">
+        <MetaViewContent
+          contentId={String((course as { id?: string }).id ?? "")}
+          contentName={title}
+          contentType="product"
+          contentCategory={categoryName || "course"}
+          value={coursePrice}
+          currency="EGP"
+        />
+        <article>
           <div className="overflow-hidden rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-[var(--shadow-card)]">
           <div className="aspect-video w-full bg-gradient-to-br from-[var(--color-primary)]/20 to-[var(--color-primary-light)]/30 flex items-center justify-center overflow-hidden">
             {(course as Record<string, unknown>).imageUrl ?? (course as Record<string, unknown>).image_url ? (
@@ -307,6 +278,7 @@ export default async function CoursePage({ params }: Props) {
                 courseId={course.id}
                 coursePrice={coursePrice}
                 userBalance={userBalance}
+                landingSlug={landingSlug}
               />
             )}
             {isEnrolled && (

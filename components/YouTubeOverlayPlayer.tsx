@@ -66,6 +66,8 @@ type Props = {
   studentCopyrightCode?: string | null;
   /** شكل ظهور كود حقوق الطبع */
   copyrightOverlayStyle?: "floating" | "watermark";
+  /** حفظ واستئناف موضع المشاهدة */
+  lessonId?: string | null;
 };
 
 function randBetween(min: number, max: number): number {
@@ -83,11 +85,11 @@ function useRandomWatermarkMotion(opts?: {
   maxPct?: number;
 }) {
   const {
-    minHopMs = 6500,
-    maxHopMs = 9500,
-    fadeMs = 450,
-    minPct = 6,
-    maxPct = 94,
+    minHopMs = 4500,
+    maxHopMs = 8000,
+    fadeMs = 700,
+    minPct = 8,
+    maxPct = 92,
   } = opts ?? {};
 
   const [pos, setPos] = useState<{ leftPct: number; topPct: number; opacity: number }>(() => ({
@@ -102,9 +104,9 @@ function useRandomWatermarkMotion(opts?: {
     const scheduleHop = () => {
       const delay = Math.round(randBetween(minHopMs, maxHopMs));
       timers.current.hop = setTimeout(() => {
-        // fade out
+        // fade out slowly
         setPos((p) => ({ ...p, opacity: 0 }));
-        // teleport while hidden, then fade in
+        // teleport while hidden, then fade in at a new spot
         timers.current.fade = setTimeout(() => {
           setPos({
             leftPct: randBetween(minPct, maxPct),
@@ -129,7 +131,7 @@ function useRandomWatermarkMotion(opts?: {
       top: `${pos.topPct}%`,
       opacity: pos.opacity,
       transform: "translate(-50%, -50%)",
-      transition: `left 6.5s linear, top 6.5s linear, opacity ${fadeMs}ms linear`,
+      transition: `left 7.5s linear, top 7.5s linear, opacity ${fadeMs}ms ease-in-out`,
       willChange: "left, top, opacity",
     } as React.CSSProperties,
   };
@@ -175,6 +177,7 @@ export function YouTubeOverlayPlayer({
   title,
   studentCopyrightCode,
   copyrightOverlayStyle = "floating",
+  lessonId = null,
 }: Props) {
   const t = useT();
   const locale = useLocale();
@@ -186,6 +189,8 @@ export function YouTubeOverlayPlayer({
   const bridgeHostRef = useRef<HTMLDivElement>(null);
   const bridgePlayerDivRef = useRef<HTMLDivElement | null>(null);
   const progressIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const resumeSecondsRef = useRef<number | null>(null);
 
   const [ready, setReady] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -243,8 +248,42 @@ export function YouTubeOverlayPlayer({
       const d = p.getDuration();
       setCurrentTime(t);
       if (Number.isFinite(d) && d > 0) setDuration(d);
+
+      if (lessonId) {
+        if (saveTimerRef.current) return;
+        saveTimerRef.current = setTimeout(() => {
+          saveTimerRef.current = null;
+          const percent = d > 0 ? Math.min(100, (t / d) * 100) : 0;
+          void fetch("/api/lessons/watch-progress", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ lessonId, seconds: t, percent }),
+          }).catch(() => undefined);
+        }, 4000);
+      }
     }, 250);
-  }, [stopProgressPoll]);
+  }, [stopProgressPoll, lessonId]);
+
+  useEffect(() => {
+    if (!lessonId) return;
+    let cancelled = false;
+    void fetch(`/api/lessons/watch-progress?lessonId=${encodeURIComponent(lessonId)}`, {
+      credentials: "include",
+    })
+      .then((r) => r.json())
+      .then((data) => {
+        if (cancelled) return;
+        const seconds = Number(data?.progress?.seconds);
+        if (Number.isFinite(seconds) && seconds > 5) {
+          resumeSecondsRef.current = seconds;
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [lessonId]);
 
   const qualityApplyDoneTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -384,6 +423,16 @@ export function YouTubeOverlayPlayer({
                 if (q && typeof q === "string") setCurrentQuality(q);
               }
             } catch {}
+            const resumeAt = resumeSecondsRef.current;
+            if (resumeAt != null && resumeAt > 5) {
+              try {
+                ev.target.seekTo(resumeAt, true);
+                setCurrentTime(resumeAt);
+              } catch {
+                /* ignore */
+              }
+              resumeSecondsRef.current = null;
+            }
             setReady(true);
           },
           onPlaybackQualityChange(ev: { data: string }) {

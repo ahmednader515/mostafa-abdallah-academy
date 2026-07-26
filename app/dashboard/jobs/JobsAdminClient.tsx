@@ -21,6 +21,10 @@ export function JobsAdminClient({ initialJobs }: { initialJobs: JobPosting[] }) 
   const [descriptionAr, setDescriptionAr] = useState("");
   const [location, setLocation] = useState("");
   const [jobType, setJobType] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [whatsapp, setWhatsapp] = useState("");
+  const [imageUrl, setImageUrl] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [editTitleAr, setEditTitleAr] = useState("");
@@ -57,6 +61,10 @@ export function JobsAdminClient({ initialJobs }: { initialJobs: JobPosting[] }) 
         descriptionAr: descriptionAr.trim() || null,
         location: location.trim() || null,
         jobType: jobType.trim() || null,
+        email: email.trim() || null,
+        phone: phone.trim() || null,
+        whatsapp: whatsapp.trim() || null,
+        imageUrl: imageUrl.trim() || null,
         isPublished: false,
       }),
     });
@@ -70,6 +78,10 @@ export function JobsAdminClient({ initialJobs }: { initialJobs: JobPosting[] }) 
     setDescriptionAr("");
     setLocation("");
     setJobType("");
+    setEmail("");
+    setPhone("");
+    setWhatsapp("");
+    setImageUrl("");
     await reload();
     router.refresh();
   }
@@ -157,6 +169,10 @@ export function JobsAdminClient({ initialJobs }: { initialJobs: JobPosting[] }) 
         <div className="grid gap-3 sm:grid-cols-2">
           <input value={location} onChange={(e) => setLocation(e.target.value)} placeholder={t(`${J}.locationPlaceholder`, "Location")} className="rounded-[var(--radius-btn)] border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2" />
           <input value={jobType} onChange={(e) => setJobType(e.target.value)} placeholder={t(`${J}.jobTypePlaceholder`, "Job type (full-time, part-time…)")} className="rounded-[var(--radius-btn)] border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2" />
+          <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t(`${J}.emailPlaceholder`, "Contact email")} className="rounded-[var(--radius-btn)] border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2" />
+          <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder={t(`${J}.phonePlaceholder`, "Phone")} className="rounded-[var(--radius-btn)] border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2" />
+          <input value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} placeholder={t(`${J}.whatsappPlaceholder`, "WhatsApp")} className="rounded-[var(--radius-btn)] border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2" />
+          <input value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder={t(`${J}.imagePlaceholder`, "Image URL")} className="rounded-[var(--radius-btn)] border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2" />
         </div>
         <button disabled={loading} className="rounded-[var(--radius-btn)] bg-[var(--color-primary)] px-4 py-2 text-sm text-white disabled:opacity-50">{t(`${J}.save`, "Save")}</button>
       </form>

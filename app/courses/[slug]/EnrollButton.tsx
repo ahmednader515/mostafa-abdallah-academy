@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useCurrency } from "@/components/CurrencyProvider";
 import { FormattedPrice } from "@/components/FormattedPrice";
 import { useT } from "@/components/LocaleProvider";
+import { newAnalyticsEventId, trackClientAnalytics, trackMetaEvent } from "@/lib/analytics-events";
 
 function fillTemplate(template: string, vars: Record<string, string>): string {
   return Object.entries(vars).reduce((s, [k, v]) => s.replaceAll(`{${k}}`, v), template);
@@ -15,10 +16,12 @@ export function EnrollButton({
   courseId,
   coursePrice,
   userBalance,
+  landingSlug = "",
 }: {
   courseId: string;
   coursePrice: number;
   userBalance: number;
+  landingSlug?: string;
 }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -43,8 +46,27 @@ export function EnrollButton({
     }
     setError("");
     setLoading(true);
-    const res = await fetch(`/api/enroll?courseId=${encodeURIComponent(courseId)}`, {
+    if (landingSlug) {
+      trackClientAnalytics("landing_checkout_start", {
+        landing_slug: landingSlug,
+        type: "course",
+        courseId,
+      });
+    }
+    trackMetaEvent("InitiateCheckout", {
+      content_ids: [courseId],
+      content_type: "product",
+      content_name: "course",
+      value: coursePrice,
+      currency: "EGP",
+      num_items: 1,
+    });
+    const purchaseEventId = newAnalyticsEventId();
+    const qs = new URLSearchParams({ courseId });
+    if (landingSlug) qs.set("lp", landingSlug);
+    const res = await fetch(`/api/enroll?${qs.toString()}`, {
       method: "POST",
+      headers: { "x-meta-event-id": purchaseEventId },
     });
     setLoading(false);
     const data = await res.json().catch(() => ({}));
@@ -52,6 +74,26 @@ export function EnrollButton({
       setError(data.error ?? t("courses.enrollFailed", "Failed to enroll in course"));
       return;
     }
+    if (landingSlug) {
+      trackClientAnalytics("landing_purchase", {
+        landing_slug: landingSlug,
+        type: "course",
+        courseId,
+      });
+    }
+    trackMetaEvent(
+      "Purchase",
+      {
+        content_ids: [courseId],
+        content_type: "product",
+        content_name: "course",
+        value: coursePrice,
+        currency: "EGP",
+        num_items: 1,
+        order_id: data.enrollmentId || purchaseEventId,
+      },
+      { eventId: purchaseEventId },
+    );
     router.refresh();
   }
 

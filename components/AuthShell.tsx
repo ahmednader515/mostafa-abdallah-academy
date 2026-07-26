@@ -2,11 +2,8 @@
 
 import Link from "next/link";
 import { useState, type ReactNode } from "react";
-import { AcademyLogo } from "@/components/AcademyLogo";
 import { useT } from "@/components/LocaleProvider";
-import { useSiteBrand } from "@/components/SiteBrandProvider";
-
-const BRAND = "Mostafa Abdullah academy";
+import { SiteBrandMark } from "@/components/SiteBrandMark";
 
 const INPUT_CLASS =
   "mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 transition focus:border-[#2563EB] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20";
@@ -105,31 +102,20 @@ export function AuthShell({
   footer?: ReactNode;
 }) {
   const t = useT();
-  const { headerLogoUrl, platformName } = useSiteBrand();
-  const displayName = platformName || BRAND;
 
   const brandHeadline =
     variant === "register"
-      ? t("auth.brand.registerHeadline", "انضم إلى أكاديمية القيادة")
+      ? t("auth.brand.registerHeadline", "انضم إلى WorldWay")
       : variant === "forgot"
         ? t("auth.brand.forgotHeadline", "استعادة الوصول لحسابك")
         : t("auth.brand.loginHeadline", "مرحباً بك مرة أخرى");
 
   const brandBody =
     variant === "register"
-      ? t(
-          "auth.brand.registerBody",
-          "ابدأ مسارك في السياحة والسفر والضيافة الجوية مع مدربين محترفين.",
-        )
+      ? t("auth.brand.registerBody", "ابدأ مسارك التعليمي مع مدربين محترفين ومحتوى منظم.")
       : variant === "forgot"
-        ? t(
-            "auth.brand.forgotBody",
-            "سنساعدك على تحديث بياناتك والعودة للتعلم بسرعة وأمان.",
-          )
-        : t(
-            "auth.brand.loginBody",
-            "من القاعة إلى قمرة القيادة — واصل رحلتك التعليمية باحتراف.",
-          );
+        ? t("auth.brand.forgotBody", "سنساعدك على تحديث بياناتك والعودة للتعلم بسرعة وأمان.")
+        : t("auth.brand.loginBody", "واصل رحلتك التعليمية على منصة WorldWay باحتراف.");
 
   return (
     <div className="auth-page relative flex min-h-screen items-center justify-center overflow-hidden px-4 py-8 sm:px-6 sm:py-12">
@@ -141,31 +127,7 @@ export function AuthShell({
         <aside className="auth-brand relative flex flex-col justify-center px-8 py-10 text-white sm:px-10 md:py-14">
           <div className="auth-brand-glow pointer-events-none absolute inset-0" aria-hidden />
           <div className="relative z-10 flex flex-col items-center text-center">
-            <Link href="/" className="group inline-flex flex-col items-center gap-4">
-              {headerLogoUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={headerLogoUrl}
-                  alt={displayName}
-                  className="h-24 w-24 rounded-full border-2 border-[#F59E0B]/50 object-cover shadow-lg transition duration-300 group-hover:scale-105 sm:h-28 sm:w-28 md:h-32 md:w-32"
-                />
-              ) : (
-                <AcademyLogo
-                  className="h-24 w-24 transition duration-300 group-hover:scale-105 sm:h-28 sm:w-28 md:h-32 md:w-32"
-                  title={displayName}
-                />
-              )}
-              <span className="text-base font-semibold tracking-tight sm:text-lg">
-                {platformName ? (
-                  <span className="text-white">{platformName}</span>
-                ) : (
-                  <>
-                    <span className="text-white">Mostafa Abdullah</span>{" "}
-                    <span className="text-[#F59E0B]">academy</span>
-                  </>
-                )}
-              </span>
-            </Link>
+            <SiteBrandMark size="lg" className="flex-col gap-4" />
             <h2 className="auth-brand-title mt-8 text-2xl font-bold leading-snug sm:text-3xl">
               {brandHeadline}
             </h2>
@@ -178,17 +140,12 @@ export function AuthShell({
         <div className="relative flex flex-col bg-white px-6 py-8 sm:px-10 sm:py-10">
           <Link
             href="/"
-            className="mb-6 inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 text-slate-500 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-800"
-            aria-label={t("auth.backHome", "Back to home")}
+            className="mb-6 inline-flex text-sm font-medium text-slate-500 transition hover:text-[#2563EB] md:hidden"
           >
-            <svg className="h-4 w-4 rtl:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
+            {t("auth.backHome", "العودة للرئيسية")}
           </Link>
-
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-[1.75rem]">{title}</h1>
+          <h1 className="text-2xl font-bold text-slate-900">{title}</h1>
           <p className="mt-1.5 text-sm text-slate-500">{subtitle}</p>
-
           <div className="mt-6 flex-1">{children}</div>
           {footer ? <div className="mt-6 text-center text-sm text-slate-500">{footer}</div> : null}
         </div>

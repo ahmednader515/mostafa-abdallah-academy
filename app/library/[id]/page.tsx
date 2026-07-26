@@ -4,6 +4,7 @@ import Link from "next/link";
 import { authOptions } from "@/lib/auth";
 import { getStoreProductById } from "@/lib/db";
 import { getServerTranslator } from "@/lib/i18n/server";
+import { MetaViewContent } from "@/components/MetaViewContent";
 
 export default async function LibraryArticlePage({
   params,
@@ -22,6 +23,14 @@ export default async function LibraryArticlePage({
 
   return (
     <article className="px-4 py-16 sm:px-6">
+      <MetaViewContent
+        contentId={product.id}
+        contentName={product.title}
+        contentType="product"
+        contentCategory="library_article"
+        value={Number(product.price)}
+        currency="EGP"
+      />
       <div className="mx-auto max-w-3xl">
         <Link
           href="/library"

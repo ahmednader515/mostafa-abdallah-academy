@@ -1,5 +1,6 @@
 import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { authOptions } from "@/lib/auth";
 import { getCoursesAll, getCoursesWithCountsForCreator } from "@/lib/db";
 import { getServerTranslator } from "@/lib/i18n/server";
@@ -24,13 +25,23 @@ export default async function DashboardCodesPage() {
   return (
     <div>
       <h2 className="text-xl font-bold text-[var(--color-foreground)]">
-        {t("dashboard.codesRoutePage.title")}
+        {t("dashboard.codesRoutePage.title", "Codes hub")}
       </h2>
       <p className="mt-1 text-sm text-[var(--color-muted)]">
         {isTeacher
           ? t("dashboard.codesRoutePage.descTeacher")
-          : t("dashboard.codesRoutePage.descStaff")}
+          : t(
+              "dashboard.codesRoutePage.descStaff",
+              "Manage activation codes. Coupons support fixed/variable discounts and usage limits.",
+            )}
       </p>
+      {isStaff ? (
+        <p className="mt-3 text-sm">
+          <Link href="/dashboard/coupons" className="font-medium text-[var(--color-primary)] hover:underline">
+            {t("dashboard.codesRoutePage.couponsLink", "Discount coupons →")}
+          </Link>
+        </p>
+      ) : null}
       <CodesManage courseOptions={courseOptions} />
     </div>
   );

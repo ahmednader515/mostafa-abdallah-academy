@@ -201,7 +201,8 @@ export function AcademyHomeHero({
                 alt={isAr ? current.titleLine1Ar : current.titleLine1En}
                 fill
                 priority={slide === 0}
-                sizes="(max-width: 1024px) 90vw, 520px"
+                sizes="(max-width: 640px) 90vw, (max-width: 1024px) 70vw, 520px"
+                quality={72}
                 className="object-contain object-center"
               />
               <div className="absolute bottom-2 start-2 flex items-center gap-2 rounded-xl bg-[var(--color-navy)] px-2.5 py-1.5 shadow-lg sm:bottom-6 sm:start-6 sm:px-3 sm:py-2">

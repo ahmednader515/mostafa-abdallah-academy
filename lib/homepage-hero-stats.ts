@@ -16,12 +16,59 @@ export type HomepageStatItem = {
   labelEn: string;
 };
 
+export type HomepageMainNavIcon =
+  | "briefcase"
+  | "play"
+  | "book"
+  | "share"
+  | "users"
+  | "globe"
+  | "chat"
+  | "link"
+  | "certificate"
+  | "target";
+
 export type HomepageMainNavFlags = {
   jobs: boolean;
   courses: boolean;
   library: boolean;
   social: boolean;
+  jobsIcon: HomepageMainNavIcon;
+  coursesIcon: HomepageMainNavIcon;
+  libraryIcon: HomepageMainNavIcon;
+  socialIcon: HomepageMainNavIcon;
 };
+
+export const HOMEPAGE_MAIN_NAV_ICONS: HomepageMainNavIcon[] = [
+  "briefcase",
+  "play",
+  "book",
+  "share",
+  "users",
+  "globe",
+  "chat",
+  "link",
+  "certificate",
+  "target",
+];
+
+const MAIN_NAV_ICON_SET = new Set<string>(HOMEPAGE_MAIN_NAV_ICONS);
+
+export const DEFAULT_MAIN_NAV_FLAGS: HomepageMainNavFlags = {
+  jobs: true,
+  courses: true,
+  library: true,
+  social: true,
+  jobsIcon: "briefcase",
+  coursesIcon: "play",
+  libraryIcon: "book",
+  socialIcon: "share",
+};
+
+function parseMainNavIcon(raw: unknown, fallback: HomepageMainNavIcon): HomepageMainNavIcon {
+  const v = typeof raw === "string" ? raw.trim() : "";
+  return MAIN_NAV_ICON_SET.has(v) ? (v as HomepageMainNavIcon) : fallback;
+}
 
 export const DEFAULT_HOMEPAGE_STATS: HomepageStatItem[] = [
   { kind: "students", value: "15,000+", labelAr: "متدرب", labelEn: "Trainees" },
@@ -29,13 +76,6 @@ export const DEFAULT_HOMEPAGE_STATS: HomepageStatItem[] = [
   { kind: "trainers", value: "50+", labelAr: "مدرب", labelEn: "Trainers" },
   { kind: "satisfaction", value: "98%", labelAr: "نسبة رضا المتدربين", labelEn: "Trainee satisfaction" },
 ];
-
-export const DEFAULT_MAIN_NAV_FLAGS: HomepageMainNavFlags = {
-  jobs: true,
-  courses: true,
-  library: true,
-  social: true,
-};
 
 export const HERO_FEATURE_KINDS: AcademyHeroSlideFeature["kind"][] = [
   "courses",
@@ -175,6 +215,10 @@ export function parseMainNavFlagsJson(raw: string | null | undefined): HomepageM
       courses: o.courses === undefined ? true : Boolean(o.courses),
       library: o.library === undefined ? true : Boolean(o.library),
       social: o.social === undefined ? true : Boolean(o.social),
+      jobsIcon: parseMainNavIcon(o.jobsIcon, DEFAULT_MAIN_NAV_FLAGS.jobsIcon),
+      coursesIcon: parseMainNavIcon(o.coursesIcon, DEFAULT_MAIN_NAV_FLAGS.coursesIcon),
+      libraryIcon: parseMainNavIcon(o.libraryIcon, DEFAULT_MAIN_NAV_FLAGS.libraryIcon),
+      socialIcon: parseMainNavIcon(o.socialIcon, DEFAULT_MAIN_NAV_FLAGS.socialIcon),
     };
   } catch {
     return { ...DEFAULT_MAIN_NAV_FLAGS };
@@ -182,12 +226,21 @@ export function parseMainNavFlagsJson(raw: string | null | undefined): HomepageM
 }
 
 export function serializeMainNavFlags(flags: HomepageMainNavFlags): string {
-  return JSON.stringify(flags);
+  return JSON.stringify({
+    jobs: Boolean(flags.jobs),
+    courses: Boolean(flags.courses),
+    library: Boolean(flags.library),
+    social: Boolean(flags.social),
+    jobsIcon: parseMainNavIcon(flags.jobsIcon, DEFAULT_MAIN_NAV_FLAGS.jobsIcon),
+    coursesIcon: parseMainNavIcon(flags.coursesIcon, DEFAULT_MAIN_NAV_FLAGS.coursesIcon),
+    libraryIcon: parseMainNavIcon(flags.libraryIcon, DEFAULT_MAIN_NAV_FLAGS.libraryIcon),
+    socialIcon: parseMainNavIcon(flags.socialIcon, DEFAULT_MAIN_NAV_FLAGS.socialIcon),
+  } satisfies HomepageMainNavFlags);
 }
 
 export function emptyHeroSlide(): AcademyHeroSlide {
   return {
-    image: "/background.png",
+    image: "/background.webp",
     badgeAr: "",
     badgeEn: "",
     titleLine1Ar: "",
