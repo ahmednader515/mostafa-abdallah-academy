@@ -4,6 +4,20 @@ import { authOptions } from "@/lib/auth";
 import { sql, getHomepageSettings } from "@/lib/db";
 import { DEFAULT_SEARCH_FLAGS, parseSearchFlags, type SearchFlags } from "@/lib/search-flags";
 
+function normalizeFlagsFromAdmin(raw: Partial<SearchFlags> | undefined): SearchFlags {
+  const incoming = raw ?? DEFAULT_SEARCH_FLAGS;
+  return {
+    enabled: incoming.enabled !== false,
+    courses: incoming.courses === true,
+    library: incoming.library === true,
+    jobs: incoming.jobs === true,
+    forum: incoming.forum === true,
+    live: incoming.live === true,
+    consultations: incoming.consultations === true,
+    trainers: incoming.trainers === true,
+  };
+}
+
 export async function GET() {
   const session = await getServerSession(authOptions);
   if (!session || (session.user.role !== "ADMIN" && session.user.role !== "ASSISTANT_ADMIN")) {
@@ -29,9 +43,9 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ error: "طلب غير صالح" }, { status: 400 });
   }
   await sql`ALTER TABLE "HomepageSetting" ADD COLUMN IF NOT EXISTS search_flags_json TEXT`.catch(() => undefined);
-  const flags = body.flags ?? DEFAULT_SEARCH_FLAGS;
+  const normalized = normalizeFlagsFromAdmin(body.flags);
   await sql`
-    UPDATE "HomepageSetting" SET search_flags_json = ${JSON.stringify(flags)}, updated_at = NOW() WHERE id = 'default'
+    UPDATE "HomepageSetting" SET search_flags_json = ${JSON.stringify(normalized)}, updated_at = NOW() WHERE id = 'default'
   `;
-  return NextResponse.json({ success: true });
+  return NextResponse.json({ success: true, flags: normalized });
 }

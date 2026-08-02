@@ -10,7 +10,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type MouseEvent as ReactMouseEvent,
 } from "react";
-import { useT } from "@/components/LocaleProvider";
+import { useLocale, useT } from "@/components/LocaleProvider";
 
 type Props = {
   children: ReactNode;
@@ -35,9 +35,13 @@ export function SectionCarousel({
   showControls = true,
 }: Props) {
   const t = useT();
+  const locale = useLocale();
+  const isRtl = locale === "ar";
   const scrollerRef = useRef<HTMLDivElement>(null);
   const [playing, setPlaying] = useState(intervalSeconds > 0);
   const [secondsLeft, setSecondsLeft] = useState(intervalSeconds);
+  const [canGoLeft, setCanGoLeft] = useState(false);
+  const [canGoRight, setCanGoRight] = useState(false);
   const drag = useRef<{
     active: boolean;
     dragged: boolean;
@@ -49,15 +53,53 @@ export function SectionCarousel({
     startX: 0,
     startScroll: 0,
   });
-  /** Suppress the click that follows a drag gesture. */
   const suppressClickRef = useRef(false);
 
-  const scrollByCards = useCallback((dir: 1 | -1) => {
+  const updateNavState = useCallback(() => {
     const el = scrollerRef.current;
     if (!el) return;
-    const amount = Math.max(240, Math.floor(el.clientWidth * 0.8));
-    el.scrollBy({ left: dir * amount, behavior: "smooth" });
-  }, []);
+    const maxScroll = Math.max(0, el.scrollWidth - el.clientWidth);
+    if (maxScroll <= 4) {
+      setCanGoLeft(false);
+      setCanGoRight(false);
+      return;
+    }
+    const left = el.scrollLeft;
+    // Chrome RTL often uses 0 at start and negative scrollLeft while scrolling.
+    if (left < 0 || (isRtl && getComputedStyle(el).direction === "rtl")) {
+      const abs = Math.abs(left);
+      setCanGoLeft(abs < maxScroll - 4);
+      setCanGoRight(abs > 4);
+      return;
+    }
+    setCanGoLeft(left > 4);
+    setCanGoRight(left < maxScroll - 4);
+  }, [isRtl]);
+
+  /** Move content visually toward the left (-1) or right (+1) of the screen. */
+  const scrollVisual = useCallback(
+    (visualDir: -1 | 1) => {
+      const el = scrollerRef.current;
+      if (!el) return;
+      const amount = Math.max(260, Math.floor(el.clientWidth * 0.85));
+      el.scrollBy({ left: visualDir * amount, behavior: "smooth" });
+      window.setTimeout(updateNavState, 350);
+    },
+    [updateNavState],
+  );
+
+  useEffect(() => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    updateNavState();
+    el.addEventListener("scroll", updateNavState, { passive: true });
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(updateNavState) : null;
+    ro?.observe(el);
+    return () => {
+      el.removeEventListener("scroll", updateNavState);
+      ro?.disconnect();
+    };
+  }, [updateNavState, children]);
 
   useEffect(() => {
     if (!playing || intervalSeconds <= 0) return;
@@ -65,20 +107,20 @@ export function SectionCarousel({
     const tick = setInterval(() => {
       setSecondsLeft((s) => {
         if (s <= 1) {
-          scrollByCards(1);
+          // Autoplay advances in reading order
+          scrollVisual(isRtl ? -1 : 1);
           return intervalSeconds;
         }
         return s - 1;
       });
     }, 1000);
     return () => clearInterval(tick);
-  }, [playing, intervalSeconds, scrollByCards]);
+  }, [playing, intervalSeconds, isRtl, scrollVisual]);
 
   function onPointerDown(e: ReactPointerEvent) {
     if (e.button !== 0) return;
     const el = scrollerRef.current;
     if (!el) return;
-    // Don't steal pointer from form controls; links/cards still allow drag-to-scroll.
     const target = e.target as HTMLElement | null;
     if (target?.closest("input, textarea, select, button")) return;
 
@@ -121,6 +163,7 @@ export function SectionCarousel({
       } catch {
         /* ignore */
       }
+      updateNavState();
     }
   }
 
@@ -131,27 +174,14 @@ export function SectionCarousel({
     suppressClickRef.current = false;
   }
 
+  const arrowBtnClass =
+    "flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] text-xl font-bold text-[var(--color-foreground)] shadow-sm transition hover:bg-[var(--color-primary)] hover:text-white disabled:pointer-events-none disabled:opacity-35";
+
   return (
     <div className={`relative ${className}`}>
-      {showControls ? (
+      {showControls && (intervalSeconds > 0 || moreHref) ? (
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => scrollByCards(-1)}
-              className="flex h-11 w-11 items-center justify-center rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] text-xl font-bold text-[var(--color-foreground)] shadow-sm hover:bg-[var(--color-primary)] hover:text-white"
-              aria-label={t("carousel.prev", "Previous")}
-            >
-              ‹
-            </button>
-            <button
-              type="button"
-              onClick={() => scrollByCards(1)}
-              className="flex h-11 w-11 items-center justify-center rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] text-xl font-bold text-[var(--color-foreground)] shadow-sm hover:bg-[var(--color-primary)] hover:text-white"
-              aria-label={t("carousel.next", "Next")}
-            >
-              ›
-            </button>
             {intervalSeconds > 0 ? (
               <>
                 <button
@@ -180,17 +210,45 @@ export function SectionCarousel({
         </div>
       ) : null}
 
-      <div
-        ref={scrollerRef}
-        className="-mx-4 cursor-grab overflow-x-auto px-4 pb-2 [scrollbar-width:thin] active:cursor-grabbing sm:-mx-0 sm:px-0 [&_a]:cursor-pointer [&_button]:cursor-pointer"
-        style={{ WebkitOverflowScrolling: "touch" }}
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerCancel={onPointerUp}
-        onClickCapture={onClickCapture}
-      >
-        <div className={`flex w-max gap-5 ${trackClassName}`}>{children}</div>
+      {/* dir=ltr keeps left/right arrows visually stable; track itself is RTL when Arabic */}
+      <div className="flex items-center gap-3 sm:gap-4" dir="ltr">
+        {showControls ? (
+          <button
+            type="button"
+            onClick={() => scrollVisual(-1)}
+            disabled={!canGoLeft}
+            className={arrowBtnClass}
+            aria-label={isRtl ? t("carousel.next", "Next") : t("carousel.prev", "Previous")}
+          >
+            ‹
+          </button>
+        ) : null}
+
+        <div
+          ref={scrollerRef}
+          dir={isRtl ? "rtl" : "ltr"}
+          className="min-w-0 flex-1 cursor-grab overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] active:cursor-grabbing [&::-webkit-scrollbar]:hidden [&_a]:cursor-pointer [&_button]:cursor-pointer"
+          style={{ WebkitOverflowScrolling: "touch" }}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerCancel={onPointerUp}
+          onClickCapture={onClickCapture}
+        >
+          <div className={`flex w-max gap-5 ${trackClassName}`}>{children}</div>
+        </div>
+
+        {showControls ? (
+          <button
+            type="button"
+            onClick={() => scrollVisual(1)}
+            disabled={!canGoRight}
+            className={arrowBtnClass}
+            aria-label={isRtl ? t("carousel.prev", "Previous") : t("carousel.next", "Next")}
+          >
+            ›
+          </button>
+        ) : null}
       </div>
     </div>
   );

@@ -115,10 +115,21 @@ html:not(.light):not(.dark) main {
     linear-gradient(160deg, #e8eef8 0%, #f8fafc 45%, #eef2f7 100%);
 }
 
+html.dark .auth-page-bg {
+  background:
+    radial-gradient(ellipse 80% 60% at 10% 20%, rgb(37 99 235 / 0.22), transparent 55%),
+    radial-gradient(ellipse 70% 50% at 90% 80%, rgb(245 158 11 / 0.12), transparent 50%),
+    linear-gradient(160deg, #020617 0%, #0f172a 48%, #111827 100%);
+}
+
 .auth-page-orb {
   filter: blur(40px);
   opacity: 0.55;
   animation: auth-orb-float 12s ease-in-out infinite;
+}
+
+html.dark .auth-page-orb {
+  opacity: 0.35;
 }
 
 .auth-page-orb-a {
@@ -128,6 +139,10 @@ html:not(.light):not(.dark) main {
 .auth-page-orb-b {
   background: rgb(245 158 11 / 0.22);
   animation-delay: -4s;
+}
+
+html.dark .auth-brand {
+  background: linear-gradient(155deg, #020617 0%, #1e3a8a 52%, #020617 100%);
 }
 
 @keyframes auth-orb-float {

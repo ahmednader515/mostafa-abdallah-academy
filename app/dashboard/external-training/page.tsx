@@ -15,11 +15,13 @@ export default async function ExternalTrainingAdminPage() {
   ]);
   return (
     <div>
-      <h2 className="text-xl font-bold">{t("dashboard.externalTraining.title", "External training")}</h2>
+      <h2 className="text-xl font-bold">
+        {t("dashboard.externalTrainingAdmin.pageTitle", "External training")}
+      </h2>
       <p className="mt-1 text-sm text-[var(--color-muted)]">
         {t(
-          "dashboard.externalTraining.subtitle",
-          "Add external training portals. Students open them with one click without typing credentials.",
+          "dashboard.externalTrainingAdmin.pageIntro",
+          "Add unlimited external training sites. Link each site to subscriptions; students launch with one click.",
         )}
       </p>
       <ExternalTrainingAdminClient initialPages={pages} />

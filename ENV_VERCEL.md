@@ -12,7 +12,8 @@
 |-----|--------|-------------|
 | **DATABASE_URL** | الرابط الكامل لقاعدة PostgreSQL (من Neon أو Supabase أو Vercel Postgres). مثال: `postgresql://user:password@host/dbname?sslmode=require` | Production + Preview |
 | **NEXTAUTH_SECRET** | نص عشوائي طويل (مثلاً 32 حرفاً). يمكن استخدام: https://generate-secret.vercel.app/32 | Production + Preview |
-| **NEXTAUTH_URL** | عنوان موقعك على Vercel بالضبط، مثل: `https://your-app.vercel.app` أو دومينك المخصص | Production + Preview |
+| **NEXTAUTH_URL** | `https://www.worldway.net` (الدومين الأساسي للموقع) | Production + Preview |
+| **NEXT_PUBLIC_PRIMARY_DOMAIN** | `https://www.worldway.net` (لـ sitemap / robots / canonical) | Production + Preview |
 
 4. اضغط **Save** بعد كل متغير.
 5. من **Deployments** → اختر آخر نشر → **⋯** → **Redeploy** (لتحميل المتغيرات الجديدة).

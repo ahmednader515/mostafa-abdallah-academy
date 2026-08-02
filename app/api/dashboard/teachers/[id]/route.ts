@@ -30,6 +30,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     teacherSubject?: string | null;
     teacherAvatarUrl?: string | null;
     teacherBio?: string | null;
+    visibleOnHomepage?: boolean;
     permissions?: Partial<{
       canCreateCourses: boolean;
       canPostJobs: boolean;
@@ -89,6 +90,14 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     patch.teacher_bio = b.length ? b.slice(0, 4000) : null;
   }
 
+  if (body.visibleOnHomepage !== undefined) {
+    patch.teacher_visible_on_homepage = !!body.visibleOnHomepage;
+    // عند الإخفاء أزل ترتيب الرئيسية حتى لا يظهر في الفتحات المحفوظة
+    if (!body.visibleOnHomepage) {
+      patch.teacher_homepage_order = null;
+    }
+  }
+
   if (Object.keys(patch).length === 0 && !body.permissions) {
     return NextResponse.json({ error: "لا توجد حقول للتحديث" }, { status: 400 });
   }
@@ -101,6 +110,12 @@ export async function PATCH(request: NextRequest, { params }: Params) {
         userId: id,
         ...body.permissions,
       });
+    }
+    try {
+      const { revalidateTag } = await import("next/cache");
+      revalidateTag("teachers", "max");
+    } catch {
+      /* noop */
     }
   } catch (e) {
     console.error("PATCH /api/dashboard/teachers/[id]", e);

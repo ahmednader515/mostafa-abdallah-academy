@@ -11,6 +11,7 @@ import {
   getSubscriptionPlanById,
 } from "@/lib/db";
 import { getLandingPageBySlug } from "@/lib/landing-pages-db";
+import { getSiteOrigin } from "@/lib/site-url";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -21,13 +22,7 @@ type Props = {
 };
 
 function siteOrigin(): string {
-  const primary = process.env.NEXT_PUBLIC_PRIMARY_DOMAIN?.trim();
-  if (primary) {
-    return primary.startsWith("http")
-      ? primary.replace(/\/$/, "")
-      : `https://${primary.replace(/\/$/, "")}`;
-  }
-  return "http://localhost:3000";
+  return getSiteOrigin();
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {

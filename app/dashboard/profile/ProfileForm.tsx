@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { signOut } from "next-auth/react";
+import { signOutFully } from "@/lib/client-sign-out";
 
 const ROLES = [
   { value: "ADMIN", label: "أدمن" },
@@ -66,7 +66,7 @@ export function ProfileForm({ defaultName, defaultEmail, defaultRole, canChangeR
     }
     if (data.roleChanged) {
       setSuccess("تم حفظ التغييرات. جاري تسجيل الخروج لتطبيق الرتبة الجديدة...");
-      await signOut({ callbackUrl: "/login" });
+      await signOutFully({ callbackUrl: "/login", reason: "role_changed" });
       router.refresh();
       return;
     }

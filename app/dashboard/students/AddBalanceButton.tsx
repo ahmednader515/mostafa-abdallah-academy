@@ -17,6 +17,8 @@ export function AddBalanceButton({
   const dir = getDir(locale);
   const [open, setOpen] = useState(false);
   const [amount, setAmount] = useState("");
+  const [reason, setReason] = useState("");
+  const [direction, setDirection] = useState<"credit" | "debit">("credit");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const router = useRouter();
@@ -28,12 +30,16 @@ export function AddBalanceButton({
       setError(t("dashboard.studentsPage.invalidAmountError", "Enter a valid amount"));
       return;
     }
+    if (!reason.trim()) {
+      setError(t("wallet.reasonRequired", "Reason is required"));
+      return;
+    }
     setError("");
     setLoading(true);
     const res = await fetch(`/api/dashboard/students/${studentId}/balance`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ amount: num }),
+      body: JSON.stringify({ amount: num, reason: reason.trim(), direction }),
     });
     setLoading(false);
     if (!res.ok) {
@@ -43,6 +49,8 @@ export function AddBalanceButton({
     }
     setOpen(false);
     setAmount("");
+    setReason("");
+    setDirection("credit");
     router.refresh();
   }
 
@@ -53,7 +61,7 @@ export function AddBalanceButton({
         onClick={() => setOpen(true)}
         className="rounded-[var(--radius-btn)] bg-[var(--color-primary)] px-3 py-1.5 text-xs font-medium text-white hover:bg-[var(--color-primary-hover)]"
       >
-        {t("dashboard.studentsPage.addBalanceButton", "Add balance")}
+        {t("wallet.adjustBalance", "Adjust wallet")}
       </button>
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
@@ -62,10 +70,20 @@ export function AddBalanceButton({
             className="w-full max-w-sm rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] p-6 shadow-lg"
           >
             <h3 className="font-semibold text-[var(--color-foreground)]">
-              {t("dashboard.studentsPage.addBalanceModalTitlePrefix", "Add balance —")} {studentName}
+              {t("wallet.adjustModalTitle", "Wallet —")} {studentName}
             </h3>
             <form onSubmit={handleSubmit} className="mt-4 space-y-3">
               {error ? <p className="text-sm text-red-600 dark:text-red-400">{error}</p> : null}
+              <select
+                value={direction}
+                onChange={(e) =>
+                  setDirection(e.target.value === "debit" ? "debit" : "credit")
+                }
+                className="w-full rounded-[var(--radius-btn)] border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2"
+              >
+                <option value="credit">{t("wallet.credit", "Add balance")}</option>
+                <option value="debit">{t("wallet.debit", "Deduct balance")}</option>
+              </select>
               <input
                 type="number"
                 step="0.01"
@@ -73,6 +91,14 @@ export function AddBalanceButton({
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
                 placeholder={t("dashboard.studentsPage.amountPlaceholderEgp", "Amount (EGP)")}
+                className="w-full rounded-[var(--radius-btn)] border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2"
+                required
+              />
+              <input
+                type="text"
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                placeholder={t("wallet.reasonPlaceholder", "Reason (required)")}
                 className="w-full rounded-[var(--radius-btn)] border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2"
                 required
               />
@@ -94,7 +120,7 @@ export function AddBalanceButton({
                 >
                   {loading
                     ? t("dashboard.studentsPage.processing", "Working...")
-                    : t("dashboard.studentsPage.add", "Add")}
+                    : t("wallet.apply", "Apply")}
                 </button>
               </div>
             </form>

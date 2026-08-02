@@ -16,15 +16,16 @@ export default async function StudentExamsPage() {
 
   const t = await getServerTranslator();
   const attempts = await getQuizAttemptsByUserId(session.user.id).catch(() => []);
-  let certificates: { id: string; title: string }[] = [];
+  let certificates: { id: string; certificateId: string; title: string }[] = [];
   try {
     const rows = await sql`
-      SELECT id, course_title FROM "Certificate"
+      SELECT id, certificate_id, course_title FROM "Certificate"
       WHERE user_id = ${session.user.id}
-      ORDER BY created_at DESC LIMIT 50
+      ORDER BY issued_at DESC LIMIT 50
     `;
-    certificates = (rows as { id: string; course_title: string }[]).map((r) => ({
+    certificates = (rows as { id: string; certificate_id: string; course_title: string }[]).map((r) => ({
       id: String(r.id),
+      certificateId: String(r.certificate_id ?? r.id),
       title: String(r.course_title ?? "Certificate"),
     }));
   } catch {
@@ -78,10 +79,10 @@ export default async function StudentExamsPage() {
             <li key={c.id} className="flex justify-between gap-2 rounded-xl border px-4 py-3">
               <span>{c.title}</span>
               <span className="flex gap-3">
-                <Link href={`/certificates/${c.id}`} className="underline">
+                <Link href={`/certificate/${encodeURIComponent(c.certificateId)}`} className="underline">
                   {t("studentDash.viewCert", "View / PDF")}
                 </Link>
-                <Link href={`/certificates?verify=${c.id}`} className="underline">
+                <Link href={`/certificates/verify/${encodeURIComponent(c.certificateId)}`} className="underline">
                   {t("studentDash.verifyCert", "Verify")}
                 </Link>
               </span>

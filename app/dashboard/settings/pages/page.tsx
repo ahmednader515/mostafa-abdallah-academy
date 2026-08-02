@@ -14,9 +14,12 @@ export default async function PagesCmsPage() {
       <Link href="/dashboard" className="text-sm font-medium text-[var(--color-primary)] hover:underline">
         {t("dashboard.backToDashboard", "Back to dashboard")}
       </Link>
-      <h2 className="mt-4 text-xl font-bold">{t("dashboard.pagesCms.title", "Pages & policies")}</h2>
+      <h2 className="mt-4 text-xl font-bold">{t("pagesCms.title", "Pages & policies")}</h2>
       <p className="mt-2 text-sm text-[var(--color-muted)]">
-        {t("dashboard.pagesCms.intro", "Edit privacy, terms, and usage policy cards shown on the site.")}
+        {t(
+          "pagesCms.intro",
+          "Create pages (privacy, terms, …). Published pages appear automatically in the header/footer/homepage according to placement. Draft pages stay hidden from visitors.",
+        )}
       </p>
       <div className="mt-6">
         <PagesCmsClient />

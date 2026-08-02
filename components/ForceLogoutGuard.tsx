@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useSession, signOut } from "next-auth/react";
+import { useSession } from "next-auth/react";
 import Link from "next/link";
+import { signOutFully } from "@/lib/client-sign-out";
 
 /**
  * عند تسجيل الدخول من جهاز آخر، الجلسة الحالية تُلغى ويُعاد forceLogout.
@@ -17,7 +18,10 @@ export function ForceLogoutGuard() {
   useEffect(() => {
     if (status !== "authenticated" || !forceLogout || done) return;
     setDone(true);
-    signOut({ callbackUrl: "/login?reason=session_ended_elsewhere" });
+    void signOutFully({
+      callbackUrl: "/login?reason=session_ended_elsewhere",
+      reason: "session_ended_elsewhere",
+    });
   }, [status, forceLogout, done]);
 
   if (status !== "authenticated" || !forceLogout) return null;

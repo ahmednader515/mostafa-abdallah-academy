@@ -42,22 +42,17 @@ export default async function LiveStreamsPage() {
               </div>
               <div className="p-5">
                 <h2 className="text-lg font-bold text-[var(--color-foreground)]">{title}</h2>
-                {meeting ? (
-                  <a
-                    href={meeting}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                {id && meeting ? (
+                  <Link
+                    href={`/live/${encodeURIComponent(id)}`}
                     className="mt-4 inline-flex rounded-[var(--radius-btn)] bg-[var(--color-primary)] px-4 py-2 text-sm font-semibold text-white"
                   >
-                    {t("live.join", "Join")}
-                  </a>
-                ) : (
-                  <Link
-                    href="/dashboard/live-streams"
-                    className="mt-4 inline-flex text-sm font-semibold text-[var(--color-primary)]"
-                  >
-                    {t("live.details", "Details")}
+                    {t("live.join", "Watch on platform")}
                   </Link>
+                ) : (
+                  <span className="mt-4 inline-flex text-sm text-[var(--color-muted)]">
+                    {t("live.details", "Details")}
+                  </span>
                 )}
               </div>
             </article>

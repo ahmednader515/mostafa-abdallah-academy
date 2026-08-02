@@ -28,6 +28,7 @@ type LessonInput = {
   content?: string;
   pdfUrl?: string;
   acceptsHomework?: boolean;
+  isPreview?: boolean;
   attachments?: LessonAttachmentInput[];
 };
 type QuestionOptionInput = { text: string; isCorrect: boolean };
@@ -58,6 +59,7 @@ export async function PUT(
     shortDescEn?: string;
     imageUrl?: string;
     price?: number;
+    compareAtPrice?: number | null;
     duration?: string | null;
     level?: string | null;
     isPublished?: boolean;
@@ -71,6 +73,7 @@ export async function PUT(
     accessDurationDays?: number | null;
     deliveryMode?: "recorded" | "live" | "hybrid";
     isVisible?: boolean;
+    certificateTemplateId?: string | null;
     lessons?: LessonInput[];
     quizzes?: QuizInput[];
     contentOrder?: ContentOrderEntry[];
@@ -148,6 +151,12 @@ export async function PUT(
     short_desc_en: (body.shortDescEn ?? "").trim() || null,
     image_url: body.imageUrl?.trim() || null,
     price: body.price ?? 0,
+    compare_at_price:
+      body.compareAtPrice !== undefined
+        ? body.compareAtPrice != null && Number.isFinite(Number(body.compareAtPrice))
+          ? Number(body.compareAtPrice)
+          : null
+        : undefined,
     duration: (body.duration as string | undefined)?.trim() || null,
     level: (body.level as string | undefined)?.trim() || null,
     is_published: body.isPublished ?? true,
@@ -167,6 +176,29 @@ export async function PUT(
     });
   } catch (e) {
     console.error("updateCourseAccessFields error:", e);
+  }
+
+  if (body.certificateTemplateId !== undefined) {
+    try {
+      const { setCourseCertificateTemplate } = await import("@/lib/certificate-templates-db");
+      await setCourseCertificateTemplate(
+        id,
+        body.certificateTemplateId ? String(body.certificateTemplateId) : null
+      );
+    } catch (e) {
+      console.error("setCourseCertificateTemplate error:", e);
+    }
+  }
+
+  const { sql } = await import("@/lib/db");
+  let previousSectionIds: Array<string | null> = [];
+  try {
+    const prevRows = (await sql`
+      SELECT section_id FROM "Lesson" WHERE course_id = ${id} ORDER BY "order" ASC
+    `) as Array<{ section_id?: string | null }>;
+    previousSectionIds = prevRows.map((r) => (r.section_id ? String(r.section_id) : null));
+  } catch {
+    previousSectionIds = [];
   }
 
   await deleteLessonsByCourseId(id);
@@ -195,6 +227,8 @@ export async function PUT(
       pdf_url: firstAttachmentUrl || le.pdfUrl?.trim() || null,
       order: orderVal,
       accepts_homework: !!le.acceptsHomework,
+      is_preview: !!le.isPreview,
+      section_id: previousSectionIds[i] ?? null,
     });
     await persistLessonAttachmentsFromInput(lesson.id, le);
   }
@@ -289,6 +323,12 @@ export async function GET(
     shortDescEn: (c as { shortDescEn?: string | null; short_desc_en?: string | null }).shortDescEn ?? (c as { short_desc_en?: string | null }).short_desc_en ?? "",
     imageUrl: c.imageUrl ?? c.image_url,
     price: Number(c.price ?? 0),
+    compareAtPrice:
+      (c as { compareAtPrice?: number | string | null; compare_at_price?: number | string | null }).compareAtPrice != null
+        ? Number((c as { compareAtPrice?: number | string | null }).compareAtPrice)
+        : (c as { compare_at_price?: number | string | null }).compare_at_price != null
+          ? Number((c as { compare_at_price?: number | string | null }).compare_at_price)
+          : null,
     isPublished: c.isPublished ?? c.is_published ?? true,
     maxQuizAttempts: c.maxQuizAttempts ?? c.max_quiz_attempts ?? null,
     categoryId: (c as { categoryId?: string | null }).categoryId ?? null,
@@ -311,6 +351,7 @@ export async function GET(
           }))
         : [],
       acceptsHomework: Boolean((l as { acceptsHomework?: boolean; accepts_homework?: boolean }).acceptsHomework ?? (l as { accepts_homework?: boolean }).accepts_homework ?? false),
+      isPreview: Boolean((l as { isPreview?: boolean; is_preview?: boolean }).isPreview ?? (l as { is_preview?: boolean }).is_preview ?? false),
     })),
     quizzes: data.quizzes.map((q) => ({
       title: q.title,

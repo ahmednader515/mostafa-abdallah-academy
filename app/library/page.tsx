@@ -2,12 +2,11 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import {
   getHomepageSettings,
-  getLatestPlatformSubscriptionExpiry,
   listLibraryCategoriesAll,
   listStudentStorePurchases,
   listStoreProductsPublic,
-  userHasActivePlatformSubscription,
 } from "@/lib/db";
+import { getActiveSubscriptionAccess } from "@/lib/subscription-access";
 import { getServerTranslator } from "@/lib/i18n/server";
 import { LibraryBrowseClient } from "./LibraryBrowseClient";
 import { LibraryPageReadyBeacon } from "./LibraryPageReadyBeacon";
@@ -23,13 +22,20 @@ export default async function LibraryPage() {
     listLibraryCategoriesAll().catch(() => []),
   ]);
 
-  let isSubscribed = false;
+  let librarySubscriptionAccess = {
+    active: false,
+    allCategories: false,
+    categoryIds: [] as string[],
+  };
   let purchasedProductIds: string[] = [];
   if (session?.user?.role === "STUDENT" && session.user.id) {
-    const active = await userHasActivePlatformSubscription(session.user.id).catch(() => false);
-    if (active) {
-      const exp = await getLatestPlatformSubscriptionExpiry(session.user.id).catch(() => null);
-      isSubscribed = !!exp;
+    const access = await getActiveSubscriptionAccess(session.user.id).catch(() => null);
+    if (access?.active && access.coversLibrary) {
+      librarySubscriptionAccess = {
+        active: true,
+        allCategories: access.legacyAllLibrary,
+        categoryIds: access.libraryCategoryIds,
+      };
     }
     const purchases = await listStudentStorePurchases(session.user.id).catch(() => []);
     purchasedProductIds = purchases.map((p) => p.productId);
@@ -61,7 +67,7 @@ export default async function LibraryPage() {
       <LibraryBrowseClient
         products={products}
         categories={categories}
-        isSubscribed={isSubscribed}
+        librarySubscriptionAccess={librarySubscriptionAccess}
         isLoggedIn={!!session}
         purchasedProductIds={purchasedProductIds}
       />

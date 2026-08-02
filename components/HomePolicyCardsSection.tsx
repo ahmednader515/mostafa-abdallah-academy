@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { getLocaleFromCookie, getServerTranslator } from "@/lib/i18n/server";
 import { pickLocalizedText } from "@/lib/i18n/localized-field";
-import { parsePolicyCards } from "@/lib/policy-cards";
+import { listPublishedPolicyCards, parsePolicyCards, policyPublicHref } from "@/lib/policy-cards";
 
 export async function HomePolicyCardsSection({
   policyCardsJson,
@@ -9,7 +9,7 @@ export async function HomePolicyCardsSection({
   policyCardsJson?: string | null;
 }) {
   const [locale, t] = await Promise.all([getLocaleFromCookie(), getServerTranslator()]);
-  const cards = parsePolicyCards(policyCardsJson).filter((c) => c.isVisible !== false);
+  const cards = listPublishedPolicyCards(parsePolicyCards(policyCardsJson));
   if (cards.length === 0) return null;
 
   return (
@@ -25,7 +25,7 @@ export async function HomePolicyCardsSection({
           {cards.map((card) => {
             const title = pickLocalizedText(locale, card.titleAr, card.titleEn) || card.slug;
             const body = pickLocalizedText(locale, card.bodyAr, card.bodyEn) || "";
-            const href = card.link || `/policies/${card.slug}`;
+            const href = policyPublicHref(card);
             return (
               <Link
                 key={card.id}

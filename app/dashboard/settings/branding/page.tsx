@@ -35,6 +35,8 @@ export default async function DashboardBrandingSettingsPage() {
     seoTitleEn: "" as string | null,
     seoDescription: "" as string | null,
     seoDescriptionEn: "" as string | null,
+    authLoginBody: "" as string | null,
+    authLoginBodyEn: "" as string | null,
   };
   try {
     const [brand, homepage] = await Promise.all([getBrandAndAnalyticsSettings(), getHomepageSettings()]);
@@ -61,6 +63,8 @@ export default async function DashboardBrandingSettingsPage() {
       seoTitleEn: homepage.pageTitleEn ?? null,
       seoDescription: homepage.seoDescription ?? null,
       seoDescriptionEn: homepage.seoDescriptionEn ?? null,
+      authLoginBody: homepage.authLoginBody ?? null,
+      authLoginBodyEn: homepage.authLoginBodyEn ?? null,
     };
   } catch {
     /* قاعدة البيانات غير متصلة */

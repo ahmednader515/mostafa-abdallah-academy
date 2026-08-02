@@ -17,22 +17,29 @@ export function EnrollButton({
   coursePrice,
   userBalance,
   landingSlug = "",
+  hidePriceSummary = false,
 }: {
   courseId: string;
   coursePrice: number;
   userBalance: number;
   landingSlug?: string;
+  /** عند التضمين داخل بطاقة الشراء التي تعرض السعر بالفعل */
+  hidePriceSummary?: boolean;
 }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [code, setCode] = useState("");
+  const [couponCode, setCouponCode] = useState("");
+  const [previewPrice, setPreviewPrice] = useState<number | null>(null);
+  const [couponMsg, setCouponMsg] = useState("");
   const [codeLoading, setCodeLoading] = useState(false);
   const [codeMessage, setCodeMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const router = useRouter();
   const t = useT();
   const { formatPrice } = useCurrency();
 
-  const hasEnoughBalance = coursePrice === 0 || userBalance >= coursePrice;
+  const effectivePrice = previewPrice != null ? previewPrice : coursePrice;
+  const hasEnoughBalance = effectivePrice === 0 || userBalance >= effectivePrice;
 
   async function handleClick() {
     if (!hasEnoughBalance) {
@@ -66,7 +73,13 @@ export function EnrollButton({
     if (landingSlug) qs.set("lp", landingSlug);
     const res = await fetch(`/api/enroll?${qs.toString()}`, {
       method: "POST",
-      headers: { "x-meta-event-id": purchaseEventId },
+      headers: {
+        "Content-Type": "application/json",
+        "x-meta-event-id": purchaseEventId,
+      },
+      body: JSON.stringify({
+        couponCode: couponCode.trim() || undefined,
+      }),
     });
     setLoading(false);
     const data = await res.json().catch(() => ({}));
@@ -140,8 +153,8 @@ export function EnrollButton({
   }
 
   return (
-    <div className="mt-6">
-      {coursePrice > 0 && (
+    <div className={hidePriceSummary ? "mt-0" : "mt-6"}>
+      {coursePrice > 0 && !hidePriceSummary && (
         <div className="mb-4 rounded-[var(--radius-btn)] border border-[var(--color-border)] bg-[var(--color-background)] p-4">
           <div className="flex items-center justify-between">
             <span className="text-sm text-[var(--color-muted)]">
@@ -167,13 +180,89 @@ export function EnrollButton({
               {fillTemplate(t("currency.needAdditional", "You need an additional {amount}."), {
                 amount: formatPrice(coursePrice - userBalance),
               })}{" "}
-              <Link href="/dashboard" className="font-medium underline">
+              <Link href="/dashboard/wallet" className="font-medium underline">
                 {t("wallet.topUp", "Top up balance")}
               </Link>
             </p>
           )}
         </div>
       )}
+      {coursePrice > 0 && hidePriceSummary && !hasEnoughBalance && (
+        <p className="mb-3 text-sm text-red-600">
+          {fillTemplate(t("currency.needAdditional", "You need an additional {amount}."), {
+            amount: formatPrice(coursePrice - userBalance),
+          })}{" "}
+          <Link href="/dashboard/wallet" className="font-medium underline">
+            {t("wallet.topUp", "Top up balance")}
+          </Link>
+        </p>
+      )}
+
+      {coursePrice > 0 ? (
+        <div className="mb-4 rounded-[var(--radius-btn)] border border-[var(--color-border)] bg-[var(--color-background)]/50 p-4">
+          <p className="mb-2 text-sm font-medium text-[var(--color-foreground)]">
+            {t("coupons.haveCoupon", "Have a discount coupon?")}
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              type="text"
+              value={couponCode}
+              onChange={(e) => {
+                setCouponCode(e.target.value.toUpperCase());
+                setPreviewPrice(null);
+                setCouponMsg("");
+              }}
+              placeholder={t("coupons.codePlaceholder", "Discount coupon code")}
+              className="min-w-[160px] flex-1 rounded-[var(--radius-btn)] border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2 text-sm font-mono"
+            />
+            <button
+              type="button"
+              className="rounded-[var(--radius-btn)] border border-[var(--color-border)] px-3 py-2 text-sm"
+              onClick={() => {
+                void (async () => {
+                  setCouponMsg("");
+                  setPreviewPrice(null);
+                  const c = couponCode.trim();
+                  if (!c) return;
+                  const res = await fetch("/api/coupons/validate", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      code: c,
+                      scope: "course",
+                      originalPrice: coursePrice,
+                      targetId: courseId,
+                    }),
+                  });
+                  const data = await res.json().catch(() => ({}));
+                  if (!data.ok) {
+                    setCouponMsg(data.error ?? t("coupons.invalid", "Invalid coupon"));
+                    return;
+                  }
+                  setPreviewPrice(Number(data.discountedPrice));
+                  setCouponMsg(
+                    t("coupons.appliedPreview", "Coupon applied. New price: {price}").replace(
+                      "{price}",
+                      formatPrice(Number(data.discountedPrice)),
+                    ),
+                  );
+                })();
+              }}
+            >
+              {t("coupons.apply", "Apply")}
+            </button>
+          </div>
+          {couponMsg ? (
+            <p className={`mt-2 text-sm ${previewPrice != null ? "text-green-600" : "text-red-600"}`}>{couponMsg}</p>
+          ) : null}
+          <p className="mt-2 text-xs text-[var(--color-muted)]">
+            {t(
+              "coupons.vsActivationHint",
+              "Discount coupons reduce the price. For free access use an activation code below.",
+            )}
+          </p>
+        </div>
+      ) : null}
 
       <div className="mb-4 rounded-[var(--radius-btn)] border border-[var(--color-border)] bg-[var(--color-background)]/50 p-4">
         <p className="mb-3 text-sm font-medium text-[var(--color-foreground)]">
@@ -220,9 +309,9 @@ export function EnrollButton({
       >
         {loading
           ? t("courses.enrolling", "Enrolling...")
-          : coursePrice > 0
+          : effectivePrice > 0
             ? fillTemplate(t("currency.buyCourse", "Buy course ({price})"), {
-                price: formatPrice(coursePrice),
+                price: formatPrice(effectivePrice),
               })
             : t("courses.enrollFree", "Enroll (Free)")}
       </button>

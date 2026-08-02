@@ -1,22 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { createJob, listAllJobs } from "@/lib/db";
+import { createJob, listAllJobs, listJobCategories } from "@/lib/db";
 import { requireStaffPermission } from "@/lib/require-permission";
 
 export async function GET() {
   const session = await getServerSession(authOptions);
-  if (!session) return NextResponse.json({ error: "غير مصرح" }, { status: 403 });
+  if (!session?.user?.id) return NextResponse.json({ error: "غير مصرح" }, { status: 403 });
   const gate = await requireStaffPermission(session.user.id, session.user.role, "canPostJobs");
-  if (!gate.ok && session.user.role !== "ADMIN") {
-    return NextResponse.json({ error: gate.error }, { status: gate.status });
-  }
-  if (session.user.role !== "ADMIN" && session.user.role !== "ASSISTANT_ADMIN") {
-    return NextResponse.json({ error: "غير مصرح" }, { status: 403 });
-  }
+  if (!gate.ok) return NextResponse.json({ error: gate.error }, { status: gate.status });
   try {
-    const jobs = await listAllJobs();
-    return NextResponse.json({ jobs });
+    const [jobs, categories] = await Promise.all([listAllJobs(), listJobCategories()]);
+    return NextResponse.json({ jobs, categories });
   } catch {
     return NextResponse.json({ error: "فشل جلب الوظائف" }, { status: 500 });
   }
@@ -24,25 +19,10 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   const session = await getServerSession(authOptions);
-  if (!session) return NextResponse.json({ error: "غير مصرح" }, { status: 403 });
-  if (session.user.role !== "ADMIN") {
-    const gate = await requireStaffPermission(session.user.id, session.user.role, "canPostJobs");
-    if (!gate.ok) return NextResponse.json({ error: gate.error }, { status: gate.status });
-  }
-  let body: {
-    title?: string;
-    titleAr?: string | null;
-    description?: string;
-    descriptionAr?: string | null;
-    location?: string | null;
-    jobType?: string | null;
-    imageUrl?: string | null;
-    email?: string | null;
-    phone?: string | null;
-    whatsapp?: string | null;
-    isPublished?: boolean;
-    order?: number;
-  };
+  if (!session?.user?.id) return NextResponse.json({ error: "غير مصرح" }, { status: 403 });
+  const gate = await requireStaffPermission(session.user.id, session.user.role, "canPostJobs");
+  if (!gate.ok) return NextResponse.json({ error: gate.error }, { status: gate.status });
+  let body: Record<string, unknown>;
   try {
     body = await request.json();
   } catch {
@@ -50,23 +30,50 @@ export async function POST(request: NextRequest) {
   }
   const title = String(body.title ?? "").trim();
   if (!title) return NextResponse.json({ error: "عنوان الوظيفة مطلوب" }, { status: 400 });
+
+  const phones = Array.isArray(body.phones)
+    ? body.phones.map((p) => String(p ?? "").trim()).filter(Boolean)
+    : body.phone
+      ? [String(body.phone).trim()].filter(Boolean)
+      : [];
+  const skills = Array.isArray(body.skills)
+    ? body.skills.map((s) => String(s ?? "").trim()).filter(Boolean)
+    : typeof body.skills === "string"
+      ? String(body.skills)
+          .split(/[,،\n]/)
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : [];
+
   try {
     const out = await createJob({
       title,
-      title_ar: body.titleAr ?? null,
+      title_ar: (body.titleAr as string | null) ?? null,
       description: String(body.description ?? ""),
-      description_ar: body.descriptionAr ?? null,
-      location: body.location ?? null,
-      job_type: body.jobType ?? null,
-      image_url: body.imageUrl ?? null,
-      email: body.email ?? null,
-      phone: body.phone ?? null,
-      whatsapp: body.whatsapp ?? null,
+      description_ar: (body.descriptionAr as string | null) ?? null,
+      location: (body.location as string | null) ?? null,
+      job_type: (body.jobType as string | null) ?? null,
+      image_url: (body.imageUrl as string | null) ?? null,
+      email: (body.email as string | null) ?? null,
+      phones,
+      phone: phones[0] ?? null,
+      whatsapp: (body.whatsapp as string | null) ?? null,
+      category_id: (body.categoryId as string | null) ?? null,
+      company_name: (body.companyName as string | null) ?? null,
+      salary_min: body.salaryMin != null && body.salaryMin !== "" ? Number(body.salaryMin) : null,
+      salary_max: body.salaryMax != null && body.salaryMax !== "" ? Number(body.salaryMax) : null,
+      salary_label: (body.salaryLabel as string | null) ?? null,
+      experience_label: (body.experienceLabel as string | null) ?? null,
+      skills,
+      badge: (body.badge as string | null) ?? null,
+      show_phone: body.showPhone !== false,
+      show_email: body.showEmail !== false,
+      contact_order: body.contactOrder === "email_first" ? "email_first" : "phone_first",
       is_published: body.isPublished === true,
-      order: body.order,
     });
     return NextResponse.json({ success: true, id: out.id });
-  } catch {
+  } catch (e) {
+    console.error("POST /api/dashboard/jobs", e);
     return NextResponse.json({ error: "فشل إنشاء الوظيفة" }, { status: 500 });
   }
 }

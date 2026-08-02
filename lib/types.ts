@@ -56,6 +56,8 @@ export interface Certificate {
   courseTitle: string;
   score: number | null;
   issuedAt: Date;
+  templateId?: string | null;
+  templateSnapshotJson?: string | null;
 }
 
 export interface HomepageSection {
@@ -96,6 +98,8 @@ export interface User {
   teacher_avatar_url?: string | null;
   /** 1–4 لترتيب البطاقة في الرئيسية؛ null = تلقائي بعد المحددين */
   teacher_homepage_order?: number | null;
+  /** إظهار المدرب في قسم الرئيسية */
+  teacher_visible_on_homepage?: boolean;
   /** كود حقوق الطبع والنشر — للطلاب فقط، فريد، يظهر على مشغّل الحصص */
   copyright_code?: string | null;
   current_session_id?: string | null;
@@ -225,6 +229,10 @@ export interface HomepageSetting {
   seoDescription?: string | null;
   /** وصف المتصفح / SEO (إنجليزي) */
   seoDescriptionEn?: string | null;
+  /** نص الجانب الأيسر في صفحة تسجيل الدخول (تحت العنوان) — عربي */
+  authLoginBody?: string | null;
+  /** نص الجانب الأيسر في صفحة تسجيل الدخول — إنجليزي */
+  authLoginBodyEn?: string | null;
   heroBgPreset: HeroBgPreset | string | null;
   /** لون أعلى التدرج المخصّص (#RRGGBB) — يُستخدم مع heroBgCustomTo عند صلاحيتهما */
   heroBgCustomFrom?: string | null;
@@ -422,6 +430,7 @@ export interface StoreProduct {
   contentType: StoreProductContentType;
   articleBody: string | null;
   fileKind?: StoreProductFileKind | string | null;
+  viewCount?: number;
 }
 
 export interface LibraryCategory {
@@ -430,6 +439,15 @@ export interface LibraryCategory {
   nameAr: string | null;
   slug: string;
   parentId: string | null;
+  order: number;
+  createdAt: string;
+}
+
+export interface JobCategory {
+  id: string;
+  name: string;
+  nameAr: string | null;
+  slug: string;
   order: number;
   createdAt: string;
 }
@@ -445,10 +463,24 @@ export interface JobPosting {
   imageUrl?: string | null;
   email?: string | null;
   phone?: string | null;
+  phones?: string[];
+  whatsapp?: string | null;
   locationAr?: string | null;
   locationEn?: string | null;
   jobTypeAr?: string | null;
   jobTypeEn?: string | null;
+  categoryId?: string | null;
+  companyName?: string | null;
+  salaryMin?: number | null;
+  salaryMax?: number | null;
+  salaryLabel?: string | null;
+  experienceLabel?: string | null;
+  skills?: string[];
+  badge?: string | null;
+  showPhone?: boolean;
+  showEmail?: boolean;
+  contactOrder?: "phone_first" | "email_first";
+  viewCount?: number;
   isPublished: boolean;
   order: number;
   createdAt: string;
@@ -458,10 +490,10 @@ export interface JobPosting {
 export type SubscriptionDurationKind =
   | "week"
   | "month"
+  | "3_months"
+  | "6_months"
+  | "9_months"
   | "year"
-  | "months_3"
-  | "months_6"
-  | "months_9"
   | "custom_days";
 
 export interface Course {
@@ -500,6 +532,8 @@ export interface Course {
   teacher_image_url?: string | null;
   teacher_description?: string | null;
   teacher_description_en?: string | null;
+  /** السعر قبل الخصم (للعرض المشطوب) */
+  compare_at_price?: string | number | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -524,6 +558,18 @@ export interface LessonRating {
   user_id: string;
   course_id: string;
   rating: number;
+  created_at: Date;
+  updated_at: Date;
+}
+
+/** تقييم طالب لكورس (1..5 + تعليق) — صف واحد لكل طالب/كورس */
+export interface CourseRating {
+  id: string;
+  course_id: string;
+  user_id: string;
+  rating: number;
+  comment: string | null;
+  is_hidden: boolean;
   created_at: Date;
   updated_at: Date;
 }
@@ -567,6 +613,9 @@ export interface Lesson {
   order: number;
   course_id: string;
   accepts_homework?: boolean;
+  /** محاضرة معاينة مجانية بدون اشتراك */
+  is_preview?: boolean;
+  section_id?: string | null;
   /** ظهور/إخفاء الحصة في الواجهة */
   isVisible?: boolean;
   /** موعد نشر/جدولة الحصة (لو مستقبلي تُخفى عن الطلاب حتى موعدها) */
@@ -623,13 +672,20 @@ export interface Enrollment {
 }
 
 /** كود تفعيل مجاني لدورة — للأدمن إنشاؤه وللطالب تفعيله */
+export type ActivationCodeTargetType = "course" | "subscription";
+
 export interface ActivationCode {
   id: string;
-  course_id: string;
+  course_id: string | null;
+  plan_id?: string | null;
+  target_type?: ActivationCodeTargetType;
   code: string;
   created_at: Date;
   used_at: Date | null;
   used_by_user_id: string | null;
+  expires_at?: Date | null;
+  max_uses?: number;
+  used_count?: number;
 }
 
 export type LiveStreamProvider = "zoom" | "google_meet" | "youtube_live" | "external";

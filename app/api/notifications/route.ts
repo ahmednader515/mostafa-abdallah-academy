@@ -39,7 +39,7 @@ export async function PATCH(request: NextRequest) {
     if (body.all) {
       await markAllNotificationsRead(session.user.id);
     } else if (body.id) {
-      await markNotificationRead(body.id);
+      await markNotificationRead(body.id, session.user.id);
     } else {
       return NextResponse.json({ error: "يجب تحديد all أو id" }, { status: 400 });
     }

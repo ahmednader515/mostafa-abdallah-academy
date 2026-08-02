@@ -19,6 +19,10 @@ import type {
   LiveStreamAccessMode,
   SubscriptionDurationKind,
 } from "./types";
+import {
+  normalizeSubscriptionDurationKind,
+  subscriptionDurationDays,
+} from "./subscription-duration";
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) throw new Error("DATABASE_URL غير معرّف");
@@ -200,8 +204,17 @@ export async function ensureLmsSpecSchema(): Promise<void> {
         )
       `;
       await sql`CREATE INDEX IF NOT EXISTS "Certificate_user_id_idx" ON "Certificate"(user_id, issued_at DESC)`;
+      await sql`ALTER TABLE "Certificate" ADD COLUMN IF NOT EXISTS template_id TEXT`;
+      await sql`ALTER TABLE "Certificate" ADD COLUMN IF NOT EXISTS template_snapshot_json TEXT`;
     } catch {
       /* noop */
+    }
+
+    try {
+      const { ensureCertificateTemplatesSchema } = await import("./certificate-templates-db");
+      await ensureCertificateTemplatesSchema();
+    } catch {
+      /* templates optional during first boot */
     }
 
     // 10b) CertificateDesignSetting — تصميم الشهادة القابل للتخصيص من لوحة التحكم
@@ -525,32 +538,29 @@ export async function userHasValidCourseAccess(userId: string, courseId: string)
   await ensureLmsSpecSchema();
 
   const courseRows = await sql`
-    SELECT is_published, price, access_type FROM "Course" WHERE id = ${courseId} LIMIT 1
+    SELECT is_published, price, access_type, category_id FROM "Course" WHERE id = ${courseId} LIMIT 1
   `;
   const course = courseRows[0] as {
     is_published?: boolean;
     price?: unknown;
     access_type?: string;
+    category_id?: string | null;
   } | undefined;
   if (!course?.is_published) return false;
   const accessType = String(course.access_type ?? "lifetime");
   const price = Number(course.price) || 0;
 
-  const hasActiveSub = async () => {
+  const hasCoveredSub = async () => {
     try {
-      const subRows = await sql`
-        SELECT 1 FROM "UserPlatformSubscription"
-        WHERE user_id = ${userId} AND expires_at > NOW()
-        LIMIT 1
-      `;
-      return (subRows as unknown[]).length > 0;
+      const { userCanAccessCourseViaSubscription } = await import("./subscription-access");
+      return userCanAccessCourseViaSubscription(userId, courseId);
     } catch {
       return false;
     }
   };
 
   if (accessType === "subscription_only") {
-    return hasActiveSub();
+    return hasCoveredSub();
   }
 
   const enrollmentRows = await sql`
@@ -559,8 +569,8 @@ export async function userHasValidCourseAccess(userId: string, courseId: string)
   const enrollment = rowToCamel<EnrollmentWithAccess>(enrollmentRows[0] as Record<string, unknown>);
   if (enrollment && isEnrollmentActive(enrollment)) return true;
 
-  // اشتراك المنصة يفتح الكورسات المدفوعة المستقلة أيضاً
-  if (price > 0 && (await hasActiveSub())) return true;
+  // اشتراك المنصة يفتح الكورسات المدفوعة المشمولة في تغطية الباقة فقط
+  if (price > 0 && (await hasCoveredSub())) return true;
   return false;
 }
 
@@ -760,8 +770,16 @@ export async function getNotificationsForUser(userId: string, limit = 50): Promi
   return rowsToCamel<Notification>(rows as Record<string, unknown>[]);
 }
 
-export async function markNotificationRead(id: string): Promise<void> {
+export async function markNotificationRead(id: string, userId?: string): Promise<void> {
   await ensureLmsSpecSchema();
+  if (userId) {
+    await sql`
+      UPDATE "Notification"
+      SET read_at = NOW()
+      WHERE id = ${id} AND user_id = ${userId} AND read_at IS NULL
+    `;
+    return;
+  }
   await sql`UPDATE "Notification" SET read_at = NOW() WHERE id = ${id} AND read_at IS NULL`;
 }
 
@@ -796,17 +814,45 @@ export async function createCertificate(data: {
   studentName: string;
   courseTitle: string;
   score?: number | null;
+  templateId?: string | null;
+  templateSnapshotJson?: string | null;
 }): Promise<Certificate> {
   await ensureLmsSpecSchema();
   const id = generateId();
   const certificateId = generateCertificatePublicId();
-  await sql`
-    INSERT INTO "Certificate" (id, certificate_id, user_id, course_id, quiz_id, attempt_id, student_name, course_title, score)
-    VALUES (
-      ${id}, ${certificateId}, ${data.userId}, ${data.courseId}, ${data.quizId ?? null},
-      ${data.attemptId ?? null}, ${data.studentName}, ${data.courseTitle}, ${data.score ?? null}
-    )
-  `;
+  let templateId = data.templateId ?? null;
+  let templateSnapshotJson = data.templateSnapshotJson ?? null;
+  if (!templateId || !templateSnapshotJson) {
+    try {
+      const { resolveTemplateForCourse, templateToSnapshot } = await import("./certificate-templates-db");
+      const template = await resolveTemplateForCourse(data.courseId);
+      templateId = template.id;
+      templateSnapshotJson = templateToSnapshot(template);
+    } catch {
+      /* templates unavailable */
+    }
+  }
+  try {
+    await sql`
+      INSERT INTO "Certificate" (
+        id, certificate_id, user_id, course_id, quiz_id, attempt_id,
+        student_name, course_title, score, template_id, template_snapshot_json
+      )
+      VALUES (
+        ${id}, ${certificateId}, ${data.userId}, ${data.courseId}, ${data.quizId ?? null},
+        ${data.attemptId ?? null}, ${data.studentName}, ${data.courseTitle}, ${data.score ?? null},
+        ${templateId}, ${templateSnapshotJson}
+      )
+    `;
+  } catch {
+    await sql`
+      INSERT INTO "Certificate" (id, certificate_id, user_id, course_id, quiz_id, attempt_id, student_name, course_title, score)
+      VALUES (
+        ${id}, ${certificateId}, ${data.userId}, ${data.courseId}, ${data.quizId ?? null},
+        ${data.attemptId ?? null}, ${data.studentName}, ${data.courseTitle}, ${data.score ?? null}
+      )
+    `;
+  }
   const rows = await sql`SELECT * FROM "Certificate" WHERE id = ${id} LIMIT 1`;
   const cert = rowToCamel<Certificate>(rows[0] as Record<string, unknown>);
   if (!cert) throw new Error("فشل إصدار الشهادة");
@@ -907,10 +953,15 @@ function parseCertificateDesignRow(r: Record<string, unknown> | undefined): Cert
 export async function getCertificateDesignSettings(): Promise<CertificateDesignSettings> {
   await ensureLmsSpecSchema();
   try {
-    const rows = await sql`SELECT * FROM "CertificateDesignSetting" WHERE id = 'default' LIMIT 1`;
-    return parseCertificateDesignRow(rows[0] as Record<string, unknown> | undefined);
+    const { getCertificateDesignSettingsCompat } = await import("./certificate-templates-db");
+    return await getCertificateDesignSettingsCompat();
   } catch {
-    return { ...DEFAULT_CERTIFICATE_DESIGN };
+    try {
+      const rows = await sql`SELECT * FROM "CertificateDesignSetting" WHERE id = 'default' LIMIT 1`;
+      return parseCertificateDesignRow(rows[0] as Record<string, unknown> | undefined);
+    } catch {
+      return { ...DEFAULT_CERTIFICATE_DESIGN };
+    }
   }
 }
 
@@ -918,6 +969,50 @@ export async function updateCertificateDesignSettings(
   data: Partial<CertificateDesignSettings>,
 ): Promise<CertificateDesignSettings> {
   await ensureLmsSpecSchema();
+  try {
+    const { getDefaultCertificateTemplate, updateCertificateTemplate } = await import("./certificate-templates-db");
+    const def = await getDefaultCertificateTemplate();
+    const sig0 = def.signatures[0] ?? {
+      imageUrl: null,
+      nameAr: null,
+      nameEn: null,
+      titleAr: null,
+      titleEn: null,
+      widthPct: 18,
+      xPct: 50,
+      yPct: 82,
+    };
+    await updateCertificateTemplate(def.id, {
+      ...(data.primaryColor !== undefined && { primaryColor: data.primaryColor }),
+      ...(data.accentColor !== undefined && { accentColor: data.accentColor }),
+      ...(data.goldColor !== undefined && { goldColor: data.goldColor }),
+      ...(data.titleAr !== undefined && { titleAr: data.titleAr }),
+      ...(data.titleEn !== undefined && { titleEn: data.titleEn }),
+      ...(data.eyebrowAr !== undefined && { eyebrowAr: data.eyebrowAr }),
+      ...(data.eyebrowEn !== undefined && { eyebrowEn: data.eyebrowEn }),
+      ...(data.logoUrl !== undefined && { logoUrl: data.logoUrl }),
+      ...(data.showScore !== undefined && { showScore: data.showScore }),
+      ...(data.showPattern !== undefined && { showPattern: data.showPattern }),
+      ...(data.borderWidth !== undefined && { borderWidth: data.borderWidth }),
+      ...((data.signatureUrl !== undefined ||
+        data.signatureLabelAr !== undefined ||
+        data.signatureLabelEn !== undefined) && {
+        signatures: [
+          {
+            ...sig0,
+            imageUrl: data.signatureUrl !== undefined ? data.signatureUrl : sig0.imageUrl,
+            nameAr: data.signatureLabelAr !== undefined ? data.signatureLabelAr : sig0.nameAr,
+            nameEn: data.signatureLabelEn !== undefined ? data.signatureLabelEn : sig0.nameEn,
+          },
+          ...def.signatures.slice(1),
+        ],
+      }),
+    });
+    return getCertificateDesignSettings();
+  } catch {
+    /* fall through to legacy table */
+  }
+
   await sql`
     INSERT INTO "CertificateDesignSetting" (id)
     VALUES ('default')
@@ -1292,9 +1387,7 @@ export async function updateBrandSettings(
 /** يحسب تاريخ الانتهاء بإضافة (value × kind) لتاريخ البداية — يدعم باقات مثل "3 أشهر" */
 export function computeExpiresAt(from: Date, kind: SubscriptionDurationKind, value = 1): Date {
   const d = new Date(from.getTime());
-  const n = Math.max(1, Math.floor(value) || 1);
-  if (kind === "week") d.setUTCDate(d.getUTCDate() + 7 * n);
-  else if (kind === "month") d.setUTCDate(d.getUTCDate() + 30 * n);
-  else d.setUTCDate(d.getUTCDate() + 365 * n);
+  const normalized = normalizeSubscriptionDurationKind(kind) ?? "year";
+  d.setUTCDate(d.getUTCDate() + subscriptionDurationDays(normalized, value));
   return d;
 }

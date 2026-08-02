@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 export type HomeLiveStream = {
   id: string;
   title: string;
@@ -60,15 +62,19 @@ export function HomeLiveStreamsSection({
                     timeStyle: "short",
                   })}
                 </p>
-                {link ? (
-                  <a
-                    href={link}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                {link && s.id ? (
+                  <Link
+                    href={`/live/${encodeURIComponent(s.id)}`}
                     className="mt-4 inline-flex rounded-[var(--radius-btn)] bg-[var(--color-primary)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--color-primary-hover)]"
                   >
-                    {isPast ? (locale === "en" ? "Watch recording" : "مشاهدة التسجيل") : locale === "en" ? "Join now" : "الانضمام الآن"}
-                  </a>
+                    {isPast
+                      ? locale === "en"
+                        ? "Watch recording"
+                        : "مشاهدة التسجيل"
+                      : locale === "en"
+                        ? "Watch on platform"
+                        : "المشاهدة داخل المنصة"}
+                  </Link>
                 ) : (
                   <span className="mt-4 inline-flex text-sm text-[var(--color-muted)]">
                     {locale === "en" ? "Link coming soon" : "الرابط قريباً"}

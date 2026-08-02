@@ -2,12 +2,17 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { createLibraryCategory, listLibraryCategoriesAll } from "@/lib/db";
+import { permissionDeniedResponse } from "@/lib/require-permission";
 
 export async function GET() {
   const session = await getServerSession(authOptions);
-  if (!session || session.user.role !== "ADMIN") {
-    return NextResponse.json({ error: "غير مصرح" }, { status: 403 });
-  }
+  if (!session?.user?.id) return NextResponse.json({ error: "غير مصرح" }, { status: 403 });
+  const denied = await permissionDeniedResponse(
+    session.user.id,
+    session.user.role,
+    "canManageLibrary",
+  );
+  if (denied) return denied;
   try {
     const categories = await listLibraryCategoriesAll();
     return NextResponse.json({ categories });
@@ -18,9 +23,13 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   const session = await getServerSession(authOptions);
-  if (!session || session.user.role !== "ADMIN") {
-    return NextResponse.json({ error: "غير مصرح" }, { status: 403 });
-  }
+  if (!session?.user?.id) return NextResponse.json({ error: "غير مصرح" }, { status: 403 });
+  const denied = await permissionDeniedResponse(
+    session.user.id,
+    session.user.role,
+    "canManageLibrary",
+  );
+  if (denied) return denied;
   let body: {
     name?: string;
     nameAr?: string | null;

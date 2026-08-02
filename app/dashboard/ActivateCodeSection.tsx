@@ -71,7 +71,7 @@ export function ActivateCodeSection() {
       <p className="mb-4 text-sm text-[var(--color-muted)]">
         {t(
           "dashboard.page.activateCode.description",
-          "If you received a free activation code for a course, enter it here to get access without purchasing.",
+          "If you received a free activation code for a course or subscription, enter it here to get access without paying. Discount coupons are entered at checkout instead.",
         )}
       </p>
       <form onSubmit={handleSubmit} className="flex flex-wrap items-center gap-3">

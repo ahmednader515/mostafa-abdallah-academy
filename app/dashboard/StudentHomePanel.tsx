@@ -51,11 +51,19 @@ export async function StudentHomePanel({
           </p>
           <div className="mt-4 flex flex-wrap items-center gap-3">
             <DashboardStudentBalance balanceEgp={overview.user.balance} />
+            {flags.wallet ? (
+              <Link
+                href="/dashboard/wallet"
+                className="rounded-[var(--radius-btn)] border border-[var(--color-border)] px-4 py-2 text-sm font-medium"
+              >
+                {t("wallet.openWallet", "Wallet")}
+              </Link>
+            ) : null}
             <Link
               href="/dashboard/add-balance"
               className="rounded-[var(--radius-btn)] bg-[var(--color-primary)] px-4 py-2 text-sm font-medium text-white"
             >
-              {t("dashboard.page.addBalanceButton", "Add balance")}
+              {t("wallet.topUpButton", "Top up wallet")}
             </Link>
           </div>
         </div>

@@ -9,12 +9,58 @@ export { ACADEMY_HOME_HERO_SLIDES };
 
 export type HomepageStatKind = "students" | "courses" | "trainers" | "satisfaction";
 
+/** أيقونات شريط الإحصائيات — قابلة للاختيار من لوحة الإدارة */
+export type HomepageStatIcon =
+  | "users"
+  | "graduation"
+  | "bookOpen"
+  | "teacher"
+  | "chalkboard"
+  | "award"
+  | "bulb"
+  | "play"
+  | "monitor"
+  | "certificate"
+  | "target";
+
 export type HomepageStatItem = {
   kind: HomepageStatKind;
   value: string;
   labelAr: string;
   labelEn: string;
+  icon: HomepageStatIcon;
 };
+
+export const HOMEPAGE_STAT_ICONS: HomepageStatIcon[] = [
+  "users",
+  "graduation",
+  "bookOpen",
+  "teacher",
+  "chalkboard",
+  "award",
+  "bulb",
+  "play",
+  "monitor",
+  "certificate",
+  "target",
+];
+
+const STAT_ICON_SET = new Set<string>(HOMEPAGE_STAT_ICONS);
+
+export const DEFAULT_STAT_ICON_BY_KIND: Record<HomepageStatKind, HomepageStatIcon> = {
+  students: "users",
+  courses: "graduation",
+  trainers: "teacher",
+  satisfaction: "award",
+};
+
+export function parseHomepageStatIcon(
+  raw: unknown,
+  fallback: HomepageStatIcon,
+): HomepageStatIcon {
+  const v = typeof raw === "string" ? raw.trim() : "";
+  return STAT_ICON_SET.has(v) ? (v as HomepageStatIcon) : fallback;
+}
 
 export type HomepageMainNavIcon =
   | "briefcase"
@@ -71,10 +117,34 @@ function parseMainNavIcon(raw: unknown, fallback: HomepageMainNavIcon): Homepage
 }
 
 export const DEFAULT_HOMEPAGE_STATS: HomepageStatItem[] = [
-  { kind: "students", value: "15,000+", labelAr: "متدرب", labelEn: "Trainees" },
-  { kind: "courses", value: "120+", labelAr: "كورس", labelEn: "Courses" },
-  { kind: "trainers", value: "50+", labelAr: "مدرب", labelEn: "Trainers" },
-  { kind: "satisfaction", value: "98%", labelAr: "نسبة رضا المتدربين", labelEn: "Trainee satisfaction" },
+  {
+    kind: "students",
+    value: "15,000+",
+    labelAr: "متدرب",
+    labelEn: "Trainees",
+    icon: DEFAULT_STAT_ICON_BY_KIND.students,
+  },
+  {
+    kind: "courses",
+    value: "120+",
+    labelAr: "كورس",
+    labelEn: "Courses",
+    icon: DEFAULT_STAT_ICON_BY_KIND.courses,
+  },
+  {
+    kind: "trainers",
+    value: "50+",
+    labelAr: "مدرب",
+    labelEn: "Trainers",
+    icon: DEFAULT_STAT_ICON_BY_KIND.trainers,
+  },
+  {
+    kind: "satisfaction",
+    value: "98%",
+    labelAr: "نسبة رضا المتدربين",
+    labelEn: "Trainee satisfaction",
+    icon: DEFAULT_STAT_ICON_BY_KIND.satisfaction,
+  },
 ];
 
 export const HERO_FEATURE_KINDS: AcademyHeroSlideFeature["kind"][] = [
@@ -172,11 +242,13 @@ export function parseHomepageStatItem(raw: unknown): HomepageStatItem | null {
   const o = raw as Record<string, unknown>;
   const kind = asString(o.kind, 32) as HomepageStatKind;
   if (!STAT_KINDS.has(kind)) return null;
+  const fallbackIcon = DEFAULT_STAT_ICON_BY_KIND[kind];
   return {
     kind,
     value: asString(o.value, 40) || "—",
     labelAr: asString(o.labelAr, 80) || kind,
     labelEn: asString(o.labelEn, 80) || kind,
+    icon: parseHomepageStatIcon(o.icon, fallbackIcon),
   };
 }
 

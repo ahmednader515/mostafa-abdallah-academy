@@ -109,17 +109,21 @@ export default async function LessonPage({ params }: Props) {
       allowedLessonIds = await getAllowedLessonIdsForUserCourse(session.user.id, course.id);
     }
   }
-  const canAccessCourse =
-    isStaff || isEnrolled || hasFullStudentAccess || allowedLessonIds.length > 0;
-  if (!canAccessCourse) notFound();
 
   const lesson = isLessonId(lessonDecoded)
     ? data.lessons.find((l: Record<string, unknown>) => l.id === lessonDecoded)
     : data.lessons.find((l: Record<string, unknown>) => l.slug === lessonDecoded);
   if (!lesson) notFound();
 
-  // لو الوصول جزئي فقط (بدون تسجيل كامل أو اشتراك منصة): لا نسمح بفتح إلا الحصص المحددة
-  if (!isStaff && !isEnrolled && !hasFullStudentAccess && allowedLessonIds.length > 0) {
+  const isPreviewLesson = Boolean(
+    (lesson as Record<string, unknown>).isPreview ?? (lesson as Record<string, unknown>).is_preview
+  );
+  const canAccessCourse =
+    isStaff || isEnrolled || hasFullStudentAccess || allowedLessonIds.length > 0 || isPreviewLesson;
+  if (!canAccessCourse) notFound();
+
+  // لو الوصول جزئي فقط (بدون تسجيل كامل أو اشتراك منصة): لا نسمح بفتح إلا الحصص المحددة أو المعاينة
+  if (!isStaff && !isEnrolled && !hasFullStudentAccess && allowedLessonIds.length > 0 && !isPreviewLesson) {
     const lid = String((lesson as Record<string, unknown>).id ?? "");
     if (!allowedLessonIds.includes(lid)) notFound();
   }

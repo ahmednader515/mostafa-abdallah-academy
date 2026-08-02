@@ -31,6 +31,12 @@ export async function PATCH(request: NextRequest) {
   }
   try {
     await setTeacherHomepageFeaturedSlots(orderedTeacherIds);
+    try {
+      const { revalidateTag } = await import("next/cache");
+      revalidateTag("teachers", "max");
+    } catch {
+      /* noop */
+    }
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     return NextResponse.json({ error: msg || "فشل الحفظ" }, { status: 400 });

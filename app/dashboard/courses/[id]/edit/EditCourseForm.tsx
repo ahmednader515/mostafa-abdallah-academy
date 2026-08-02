@@ -14,6 +14,7 @@ type LessonRow = {
   pdfUrl: string;
   attachments: LessonAttachmentRow[];
   acceptsHomework: boolean;
+  isPreview: boolean;
 };
 type QuestionOptionRow = { text: string; isCorrect: boolean };
 type QuestionRow = { type: "MULTIPLE_CHOICE" | "TRUE_FALSE"; questionText: string; options: QuestionOptionRow[] };
@@ -35,6 +36,7 @@ type InitialData = {
   shortDescEn: string;
   imageUrl: string;
   price: string;
+  compareAtPrice: string;
   duration: string;
   level: string;
   isPublished: boolean;
@@ -44,6 +46,7 @@ type InitialData = {
   accessDurationDays?: number | null;
   deliveryMode?: "recorded" | "live" | "hybrid";
   isVisible?: boolean;
+  certificateTemplateId?: string;
   lessons: LessonRow[];
   quizzes: InitialQuizRow[];
   contentOrder: ContentOrderEntry[];
@@ -56,6 +59,7 @@ const defaultLesson: LessonRow = {
   pdfUrl: "",
   attachments: [],
   acceptsHomework: false,
+  isPreview: false,
 };
 const defaultQuiz: QuizRow = { title: "", timeLimitMinutes: "", passingScore: "", questions: [{ type: "MULTIPLE_CHOICE", questionText: "", options: [{ text: "", isCorrect: false }] }] };
 
@@ -70,6 +74,7 @@ export function EditCourseForm({ courseId, initialData }: { courseId: string; in
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [categories, setCategories] = useState<CategoryOption[]>([]);
+  const [certTemplates, setCertTemplates] = useState<Array<{ id: string; name: string; nameAr: string | null }>>([]);
   const [form, setForm] = useState({
     titleAr: initialData.titleAr,
     titleEn: initialData.titleEn,
@@ -79,6 +84,7 @@ export function EditCourseForm({ courseId, initialData }: { courseId: string; in
     shortDescEn: initialData.shortDescEn,
     imageUrl: initialData.imageUrl,
     price: initialData.price,
+    compareAtPrice: initialData.compareAtPrice ?? "",
     duration: initialData.duration ?? "",
     level: initialData.level ?? "",
     isPublished: initialData.isPublished,
@@ -90,6 +96,7 @@ export function EditCourseForm({ courseId, initialData }: { courseId: string; in
     accessDurationDays: initialData.accessDurationDays != null ? String(initialData.accessDurationDays) : "",
     deliveryMode: (initialData.deliveryMode ?? "recorded") as "recorded" | "live" | "hybrid",
     isVisible: initialData.isVisible ?? true,
+    certificateTemplateId: initialData.certificateTemplateId ?? "",
   });
   const [lessons, setLessons] = useState<LessonRow[]>(
     initialData.lessons.length > 0
@@ -117,6 +124,7 @@ export function EditCourseForm({ courseId, initialData }: { courseId: string; in
             pdfUrl: attachments[0]?.fileUrl || pdfUrl,
             attachments,
             acceptsHomework: Boolean(r.acceptsHomework ?? r.accepts_homework ?? false),
+            isPreview: Boolean(r.isPreview ?? r.is_preview ?? false),
           };
         })
       : [defaultLesson]
@@ -131,6 +139,20 @@ export function EditCourseForm({ courseId, initialData }: { courseId: string; in
 
   useEffect(() => {
     loadCategories();
+    fetch("/api/dashboard/settings/certificates/templates")
+      .then((r) => r.json())
+      .then((data) => {
+        if (Array.isArray(data.templates)) {
+          setCertTemplates(
+            data.templates.map((t: { id: string; name: string; nameAr?: string | null }) => ({
+              id: t.id,
+              name: t.name,
+              nameAr: t.nameAr ?? null,
+            }))
+          );
+        }
+      })
+      .catch(() => {});
   }, []);
 
   const [deletingCategoryId, setDeletingCategoryId] = useState<string | null>(null);
@@ -412,6 +434,7 @@ export function EditCourseForm({ courseId, initialData }: { courseId: string; in
       shortDescEn: form.shortDescEn.trim() || undefined,
       imageUrl: form.imageUrl.trim() || undefined,
       price: form.price ? parseFloat(form.price) : 0,
+      compareAtPrice: form.compareAtPrice.trim() ? parseFloat(form.compareAtPrice) : null,
       duration: form.duration.trim() || null,
       level: form.level.trim() || null,
       isPublished: form.isPublished,
@@ -426,6 +449,7 @@ export function EditCourseForm({ courseId, initialData }: { courseId: string; in
           : null,
       deliveryMode: form.deliveryMode,
       isVisible: form.isVisible,
+      certificateTemplateId: form.certificateTemplateId.trim() || null,
       lessons: validLessons.map((l) => ({
         title: l.title.trim(),
         videoUrl: l.videoUrl.trim() || undefined,
@@ -440,6 +464,7 @@ export function EditCourseForm({ courseId, initialData }: { courseId: string; in
             fileName: a.fileName.trim() || undefined,
           })),
         acceptsHomework: l.acceptsHomework,
+        isPreview: l.isPreview,
       })),
       quizzes: validQuizzes,
       contentOrder: filteredContentOrder,
@@ -577,9 +602,15 @@ export function EditCourseForm({ courseId, initialData }: { courseId: string; in
               </div>
             )}
           </div>
-          <div>
-            <label className="block text-sm font-medium text-[var(--color-foreground)]">{t(`${Cf}.priceEgpLabel`)}</label>
-            <input type="number" step="0.01" min="0" value={form.price} onChange={(e) => setForm((f) => ({ ...f, price: e.target.value }))} className="mt-1 w-full rounded-[var(--radius-btn)] border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2" />
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label className="block text-sm font-medium text-[var(--color-foreground)]">{t(`${Cf}.priceEgpLabel`)}</label>
+              <input type="number" step="0.01" min="0" value={form.price} onChange={(e) => setForm((f) => ({ ...f, price: e.target.value }))} className="mt-1 w-full rounded-[var(--radius-btn)] border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-[var(--color-foreground)]">{t(`${Cf}.compareAtPriceLabel`, "Compare-at price (before discount)")}</label>
+              <input type="number" step="0.01" min="0" value={form.compareAtPrice} onChange={(e) => setForm((f) => ({ ...f, compareAtPrice: e.target.value }))} placeholder={t(`${Cf}.compareAtPricePlaceholder`, "Optional")} className="mt-1 w-full rounded-[var(--radius-btn)] border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2" />
+            </div>
           </div>
           <div>
             <label className="block text-sm font-medium text-[var(--color-foreground)]">{t(`${Cf}.quizAttemptsHint`)}</label>
@@ -680,6 +711,23 @@ export function EditCourseForm({ courseId, initialData }: { courseId: string; in
             <span className="text-sm text-[var(--color-foreground)]">{t(`${Cf}.isVisibleLabel`)}</span>
           </label>
           <p className="text-xs text-[var(--color-muted)]">{t(`${Cf}.isVisibleHelp`)}</p>
+          <div>
+            <label className="block text-sm font-medium text-[var(--color-foreground)]">
+              {t(`${Cf}.certificateTemplateLabel`, "Certificate template")}
+            </label>
+            <select
+              value={form.certificateTemplateId}
+              onChange={(e) => setForm((f) => ({ ...f, certificateTemplateId: e.target.value }))}
+              className="mt-1 w-full rounded-[var(--radius-btn)] border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2"
+            >
+              <option value="">{t(`${Cf}.certificateTemplateDefault`, "Default template")}</option>
+              {certTemplates.map((tpl) => (
+                <option key={tpl.id} value={tpl.id}>
+                  {tpl.nameAr || tpl.name}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
       </section>
 
@@ -784,6 +832,10 @@ export function EditCourseForm({ courseId, initialData }: { courseId: string; in
               <label className="flex items-center gap-2 pt-2">
                 <input type="checkbox" checked={lesson.acceptsHomework} onChange={(e) => updateLesson(i, "acceptsHomework", e.target.checked)} className="rounded border-[var(--color-border)]" />
                 <span className="text-sm text-[var(--color-foreground)]">{t(`${Cf}.homeworkCheckbox`)}</span>
+              </label>
+              <label className="flex items-center gap-2 pt-2">
+                <input type="checkbox" checked={lesson.isPreview} onChange={(e) => updateLesson(i, "isPreview", e.target.checked)} className="rounded border-[var(--color-border)]" />
+                <span className="text-sm text-[var(--color-foreground)]">{t(`${Cf}.freePreviewCheckbox`, "Free preview (watch without enrollment)")}</span>
               </label>
             </div>
           </div>

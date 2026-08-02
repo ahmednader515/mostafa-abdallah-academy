@@ -1,14 +1,31 @@
 import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
 import { authOptions } from "@/lib/auth";
-import { listAllJobs } from "@/lib/db";
+import { getJobsHeroImageUrl, listAllJobs, listJobCategories } from "@/lib/db";
+import { requireStaffPermission } from "@/lib/require-permission";
+import type { JobCategory, JobPosting } from "@/lib/types";
 import { JobsAdminClient } from "./JobsAdminClient";
 
 export default async function JobsDashboardPage() {
   const session = await getServerSession(authOptions);
-  if (!session || session.user.role !== "ADMIN") redirect("/dashboard");
+  if (!session?.user?.id) redirect("/login");
+  const gate = await requireStaffPermission(session.user.id, session.user.role, "canPostJobs");
+  if (!gate.ok) redirect("/dashboard");
 
-  const jobs = await listAllJobs().catch(() => []);
+  const [jobsRaw, catsRaw, heroImageUrl] = await Promise.all([
+    listAllJobs().catch(() => []),
+    listJobCategories().catch(() => []),
+    getJobsHeroImageUrl().catch(() => "/images/jobs-hero.png"),
+  ]);
 
-  return <JobsAdminClient initialJobs={jobs} />;
+  const initialJobs = jobsRaw as unknown as JobPosting[];
+  const initialCategories = catsRaw as unknown as JobCategory[];
+
+  return (
+    <JobsAdminClient
+      initialJobs={initialJobs}
+      initialCategories={initialCategories}
+      initialHeroImageUrl={heroImageUrl}
+    />
+  );
 }

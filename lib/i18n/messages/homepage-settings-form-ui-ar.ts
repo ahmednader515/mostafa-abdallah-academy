@@ -39,7 +39,8 @@ export const homepageSettingsFormUiAr = {
 
   statsRibbonTitle: "شريط الإحصائيات (تحت الهيرو مباشرة)",
   statsRibbonIntro:
-    "أربع بطاقات إحصائية تظهر أسفل شرائح الهيرو. الأيقونة ثابتة لكل بطاقة، ويمكنك تعديل القيمة والنص المعروض بالعربية والإنجليزية.",
+    "أربع بطاقات إحصائية تظهر أسفل شرائح الهيرو. يمكنك تعديل الأيقونة والقيمة والنص بالعربية والإنجليزية لكل بطاقة.",
+  statIconLabel: "الأيقونة",
   statValueLabel: "القيمة (مثلاً 15,000+)",
   statLabelArLabel: "النص بالعربية",
   statLabelEnLabel: "النص بالإنجليزية",
@@ -47,6 +48,17 @@ export const homepageSettingsFormUiAr = {
   statKindCourses: "الكورسات",
   statKindTrainers: "المدربين",
   statKindSatisfaction: "نسبة الرضا",
+  statIcon_users: "أشخاص / متدربين",
+  statIcon_graduation: "قبعة تخرج (كورس)",
+  statIcon_bookOpen: "كتاب مفتوح",
+  statIcon_teacher: "مدرب",
+  statIcon_chalkboard: "سبورة",
+  statIcon_award: "وسام / إنجاز",
+  statIcon_bulb: "مصباح",
+  statIcon_play: "تشغيل فيديو",
+  statIcon_monitor: "شاشة",
+  statIcon_certificate: "شهادة",
+  statIcon_target: "هدف",
 
   mainNavTitle: "أزرار التنقل السريع (أسفل شريط الإحصائيات)",
   mainNavIntro: "اختر الأزرار التي تظهر في الصفحة الرئيسية، ويمكنك تغيير أيقونة كل زر.",

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { ManageUserPermissionsModal } from "@/components/ManageUserPermissionsModal";
 import { useT } from "@/components/LocaleProvider";
 import { useDashboardTable } from "@/lib/i18n/dashboard-table";
 import { fillMessage } from "@/lib/i18n/interpolate";
@@ -14,6 +15,7 @@ export type TeacherRow = {
   avatarUrl: string | null;
   phone: string | null;
   homepageOrder: number | null;
+  visibleOnHomepage: boolean;
   bio: string | null;
   permissions: {
     canCreateCourses: boolean;
@@ -33,6 +35,7 @@ type ApiTeacher = {
   teacher_subject?: string | null;
   teacher_avatar_url?: string | null;
   teacher_homepage_order?: number | null;
+  teacher_visible_on_homepage?: boolean | null;
   teacher_bio?: string | null;
   permissions?: TeacherRow["permissions"];
 };
@@ -62,6 +65,7 @@ function mapApiToRows(list: ApiTeacher[]): TeacherRow[] {
     avatarUrl: t.teacher_avatar_url ?? null,
     phone: t.student_number ?? null,
     homepageOrder: normalizeHomepageOrder(t.teacher_homepage_order),
+    visibleOnHomepage: t.teacher_visible_on_homepage !== false,
     bio: t.teacher_bio ?? null,
     permissions: t.permissions ?? null,
   }));
@@ -95,6 +99,7 @@ export function TeachersAdminClient({
   const [createImageError, setCreateImageError] = useState("");
 
   const [editOpen, setEditOpen] = useState(false);
+  const [permsTeacher, setPermsTeacher] = useState<TeacherRow | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [editEmail, setEditEmail] = useState("");
@@ -268,6 +273,53 @@ export function TeachersAdminClient({
     }
     setSuccess(t(`${Ta}.deleteSuccess`));
     if (editingId === teacher.id) closeEdit();
+    await reloadTeachers();
+    router.refresh();
+  }
+
+  async function toggleVisibleOnHomepage(teacher: TeacherRow) {
+    const next = !teacher.visibleOnHomepage;
+    setError("");
+    setSuccess("");
+    setTeachers((prev) =>
+      prev.map((row) =>
+        row.id === teacher.id
+          ? {
+              ...row,
+              visibleOnHomepage: next,
+              homepageOrder: next ? row.homepageOrder : null,
+            }
+          : row,
+      ),
+    );
+    if (!next) {
+      setFeaturedSlots((prev) => {
+        const cleared = prev.map((id) => (id === teacher.id ? "" : id)) as [
+          string,
+          string,
+          string,
+          string,
+        ];
+        return cleared;
+      });
+    }
+    const res = await fetch(`/api/dashboard/teachers/${encodeURIComponent(teacher.id)}`, {
+      method: "PATCH",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ visibleOnHomepage: next }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setError(data.error ?? t(`${Ta}.visibilityFailed`, "Failed to update visibility"));
+      await reloadTeachers();
+      return;
+    }
+    setSuccess(
+      next
+        ? t(`${Ta}.visibilityShown`, "Trainer shown on homepage")
+        : t(`${Ta}.visibilityHidden`, "Trainer hidden from homepage"),
+    );
     await reloadTeachers();
     router.refresh();
   }
@@ -486,7 +538,12 @@ export function TeachersAdminClient({
                 dir={dir}
               >
                 <h3 className="text-base font-semibold text-[var(--color-foreground)]">{t(`${Ta}.featuredTitle`)}</h3>
-                <p className="mt-2 text-sm text-[var(--color-muted)]">{t(`${Ta}.featuredIntro`)}</p>
+                <p className="mt-2 text-sm text-[var(--color-muted)]">
+                  {t(
+                    `${Ta}.featuredIntro`,
+                    "Choose up to 4 visible trainers for the homepage. Leave empty slots blank — layout adapts to how many you pick.",
+                  )}
+                </p>
                 <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                   {[0, 1, 2, 3].map((i) => (
                     <div key={i}>
@@ -499,11 +556,13 @@ export function TeachersAdminClient({
                         className="mt-1 w-full rounded-[var(--radius-btn)] border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2 text-[var(--color-foreground)]"
                       >
                         <option value="">{t(`${Ta}.slotEmpty`)}</option>
-                        {teachers.map((row) => (
-                          <option key={row.id} value={row.id}>
-                            {row.name}
-                          </option>
-                        ))}
+                        {teachers
+                          .filter((row) => row.visibleOnHomepage || row.id === featuredSlots[i])
+                          .map((row) => (
+                            <option key={row.id} value={row.id}>
+                              {row.name}
+                            </option>
+                          ))}
                       </select>
                     </div>
                   ))}
@@ -522,26 +581,34 @@ export function TeachersAdminClient({
             ) : null}
 
             <div className="overflow-x-auto rounded-[var(--radius-card)] border border-[var(--color-border)]" dir={dir}>
-              <table className="w-full min-w-[640px] text-sm">
+              <table className="w-full min-w-[720px] text-sm">
                 <thead className="border-b border-[var(--color-border)] bg-[var(--color-surface)]">
                   <tr>
                     <th className={`px-3 py-3 ${thClass} font-medium w-16`}>{t(`${Ta}.colPhoto`)}</th>
                     <th className={`px-4 py-3 ${thClass} font-medium`}>{t(`${Ta}.colName`)}</th>
                     <th className={`px-4 py-3 ${thClass} font-medium`}>{t(`${Ta}.colEmail`)}</th>
                     <th className={`px-4 py-3 ${thClass} font-medium`}>{t(`${Ta}.colSubject`)}</th>
+                    <th className={`px-4 py-3 ${thClass} font-medium`}>
+                      {t(`${Ta}.colHomepageVisibility`, "Homepage")}
+                    </th>
                     <th className={`px-4 py-3 ${thClass} font-medium`}>{t(`${Ta}.colActions`)}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {teachers.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="px-4 py-8 text-center text-[var(--color-muted)]">
+                      <td colSpan={6} className="px-4 py-8 text-center text-[var(--color-muted)]">
                         {t(`${Ta}.emptyTeachers`)}
                       </td>
                     </tr>
                   ) : (
                     teachers.map((row) => (
-                      <tr key={row.id} className="border-b border-[var(--color-border)]/60">
+                      <tr
+                        key={row.id}
+                        className={`border-b border-[var(--color-border)]/60 ${
+                          row.visibleOnHomepage ? "" : "opacity-60"
+                        }`}
+                      >
                         <td className="px-3 py-2">
                           {row.avatarUrl ? (
                             // eslint-disable-next-line @next/next/no-img-element
@@ -556,6 +623,21 @@ export function TeachersAdminClient({
                         <td className="px-4 py-3 text-[var(--color-muted)]">{row.email}</td>
                         <td className="px-4 py-3 text-[var(--color-muted)]">{row.subject ?? "—"}</td>
                         <td className="px-4 py-3">
+                          <button
+                            type="button"
+                            onClick={() => void toggleVisibleOnHomepage(row)}
+                            className={`rounded-[var(--radius-btn)] px-3 py-1 text-xs font-medium ${
+                              row.visibleOnHomepage
+                                ? "border border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                                : "border border-[var(--color-border)] bg-[var(--color-background)] text-[var(--color-muted)]"
+                            }`}
+                          >
+                            {row.visibleOnHomepage
+                              ? t(`${Ta}.visibilityShow`, "Visible")
+                              : t(`${Ta}.visibilityHide`, "Hidden")}
+                          </button>
+                        </td>
+                        <td className="px-4 py-3">
                           <div className="flex flex-wrap gap-2">
                             <button
                               type="button"
@@ -563,6 +645,13 @@ export function TeachersAdminClient({
                               className="rounded-[var(--radius-btn)] border border-[var(--color-border)] px-3 py-1 text-xs font-medium text-[var(--color-foreground)] hover:bg-[var(--color-border)]/40"
                             >
                               {t(`${Ta}.edit`)}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setPermsTeacher(row)}
+                              className="rounded-[var(--radius-btn)] border border-[var(--color-border)] px-3 py-1 text-xs font-medium text-[var(--color-foreground)] hover:bg-[var(--color-border)]/40"
+                            >
+                              {t("dashboard.permissions.manageTitle", "Manage permissions")}
                             </button>
                             <button
                               type="button"
@@ -735,6 +824,18 @@ export function TeachersAdminClient({
                 >
                   {editLoading ? t(`${Ta}.saveEditBusy`) : t(`${Ta}.saveEditIdle`)}
                 </button>
+                {editingId ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const row = teachers.find((x) => x.id === editingId);
+                      if (row) setPermsTeacher(row);
+                    }}
+                    className="rounded-[var(--radius-btn)] border border-[var(--color-border)] px-4 py-2 text-sm font-medium text-[var(--color-foreground)] hover:bg-[var(--color-border)]/40"
+                  >
+                    {t("dashboard.permissions.manageTitle", "Manage permissions")}
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   onClick={closeEdit}
@@ -746,6 +847,20 @@ export function TeachersAdminClient({
             </form>
           </div>
         </div>
+      ) : null}
+
+      {permsTeacher ? (
+        <ManageUserPermissionsModal
+          open
+          userId={permsTeacher.id}
+          userName={permsTeacher.name || permsTeacher.email}
+          userRole="TEACHER"
+          onClose={() => setPermsTeacher(null)}
+          onSaved={() => {
+            router.refresh();
+            void reloadTeachers();
+          }}
+        />
       ) : null}
     </div>
   );

@@ -130,12 +130,42 @@ export async function ensureLmsFeaturesSchema(): Promise<void> {
       await sql`ALTER TABLE "Course" ADD COLUMN IF NOT EXISTS teacher_image_url TEXT`;
       await sql`ALTER TABLE "Course" ADD COLUMN IF NOT EXISTS teacher_description TEXT`;
       await sql`ALTER TABLE "Course" ADD COLUMN IF NOT EXISTS teacher_description_en TEXT`;
+      await sql`ALTER TABLE "Course" ADD COLUMN IF NOT EXISTS compare_at_price NUMERIC(12,2)`;
+    } catch {
+      /* noop */
+    }
+
+    try {
+      await sql`ALTER TABLE "Lesson" ADD COLUMN IF NOT EXISTS is_preview BOOLEAN NOT NULL DEFAULT false`;
     } catch {
       /* noop */
     }
 
     try {
       await sql`ALTER TABLE "StoreProduct" ADD COLUMN IF NOT EXISTS file_kind TEXT`;
+    } catch {
+      /* noop */
+    }
+
+    try {
+      await sql`
+        CREATE TABLE IF NOT EXISTS "ExternalTrainingPage" (
+          id TEXT PRIMARY KEY,
+          title TEXT NOT NULL,
+          title_ar TEXT,
+          description TEXT NOT NULL DEFAULT '',
+          description_ar TEXT,
+          image_url TEXT,
+          launch_url TEXT NOT NULL,
+          launch_method TEXT NOT NULL DEFAULT 'POST',
+          credentials_json TEXT,
+          is_published BOOLEAN NOT NULL DEFAULT false,
+          "order" INT NOT NULL DEFAULT 0,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `;
+      await sql`CREATE INDEX IF NOT EXISTS "ExternalTrainingPage_published_order_idx" ON "ExternalTrainingPage"(is_published, "order")`;
     } catch {
       /* noop */
     }
@@ -151,80 +181,250 @@ export async function ensureLmsFeaturesSchema(): Promise<void> {
     } catch {
       /* noop */
     }
+
+    try {
+      await sql`
+        CREATE TABLE IF NOT EXISTS "DiscountCoupon" (
+          id TEXT PRIMARY KEY,
+          code TEXT NOT NULL UNIQUE,
+          discount_type TEXT NOT NULL DEFAULT 'percent',
+          amount NUMERIC(12,2) NOT NULL DEFAULT 0,
+          scope TEXT NOT NULL DEFAULT 'course',
+          usage_mode TEXT NOT NULL DEFAULT 'unlimited',
+          max_uses INT,
+          used_count INT NOT NULL DEFAULT 0,
+          is_active BOOLEAN NOT NULL DEFAULT true,
+          campaign_name TEXT,
+          starts_at TIMESTAMPTZ,
+          expires_at TIMESTAMPTZ,
+          max_uses_per_user INT,
+          target_mode TEXT NOT NULL DEFAULT 'all_in_scope',
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `;
+      await sql`ALTER TABLE "DiscountCoupon" ADD COLUMN IF NOT EXISTS campaign_name TEXT`;
+      await sql`ALTER TABLE "DiscountCoupon" ADD COLUMN IF NOT EXISTS starts_at TIMESTAMPTZ`;
+      await sql`ALTER TABLE "DiscountCoupon" ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ`;
+      await sql`ALTER TABLE "DiscountCoupon" ADD COLUMN IF NOT EXISTS max_uses_per_user INT`;
+      await sql`ALTER TABLE "DiscountCoupon" ADD COLUMN IF NOT EXISTS target_mode TEXT NOT NULL DEFAULT 'all_in_scope'`;
+      await sql`CREATE INDEX IF NOT EXISTS "DiscountCoupon_code_idx" ON "DiscountCoupon"(code)`;
+      await sql`
+        CREATE TABLE IF NOT EXISTS "DiscountCouponTarget" (
+          coupon_id TEXT NOT NULL REFERENCES "DiscountCoupon"(id) ON DELETE CASCADE,
+          target_type TEXT NOT NULL,
+          target_id TEXT NOT NULL,
+          PRIMARY KEY (coupon_id, target_type, target_id)
+        )
+      `;
+      await sql`
+        CREATE TABLE IF NOT EXISTS "DiscountCouponRedemption" (
+          id TEXT PRIMARY KEY,
+          coupon_id TEXT NOT NULL REFERENCES "DiscountCoupon"(id) ON DELETE CASCADE,
+          user_id TEXT NOT NULL,
+          scope TEXT NOT NULL DEFAULT '',
+          target_id TEXT,
+          original_price NUMERIC(12,2) NOT NULL DEFAULT 0,
+          discounted_price NUMERIC(12,2) NOT NULL DEFAULT 0,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `;
+      await sql`CREATE INDEX IF NOT EXISTS "DiscountCouponRedemption_coupon_user_idx" ON "DiscountCouponRedemption"(coupon_id, user_id)`;
+    } catch {
+      /* noop */
+    }
   });
 }
 
 // ─── DiscountCoupon ─────────────────────────────────────────────────────────
+
+export type CouponScope = "course" | "library" | "subscription" | "store" | "all";
+export type CouponTargetType = "course" | "store_product" | "subscription_plan";
 
 export type DiscountCoupon = {
   id: string;
   code: string;
   discountType: "percent" | "fixed";
   amount: number;
-  scope: "course" | "library" | "subscription";
+  scope: CouponScope;
   usageMode: "fixed" | "unlimited";
   maxUses: number | null;
   usedCount: number;
   isActive: boolean;
+  campaignName: string | null;
+  startsAt: string | null;
+  expiresAt: string | null;
+  maxUsesPerUser: number | null;
+  targetMode: "all_in_scope" | "specific";
+  targets: Array<{ targetType: CouponTargetType; targetId: string }>;
   createdAt: string;
   updatedAt: string;
 };
 
-function mapCoupon(r: Record<string, unknown>): DiscountCoupon {
+const COUPON_SCOPES: CouponScope[] = ["course", "library", "subscription", "store", "all"];
+
+function mapCoupon(r: Record<string, unknown>, targets: DiscountCoupon["targets"] = []): DiscountCoupon {
+  const scopeRaw = String(r.scope ?? "course");
   return {
     id: String(r.id),
     code: String(r.code ?? ""),
     discountType: r.discount_type === "fixed" ? "fixed" : "percent",
     amount: Number(r.amount ?? 0),
-    scope: (["course", "library", "subscription"].includes(String(r.scope))
-      ? String(r.scope)
-      : "course") as DiscountCoupon["scope"],
+    scope: (COUPON_SCOPES.includes(scopeRaw as CouponScope) ? scopeRaw : "course") as CouponScope,
     usageMode: r.usage_mode === "fixed" ? "fixed" : "unlimited",
     maxUses: r.max_uses != null ? Number(r.max_uses) : null,
     usedCount: Number(r.used_count ?? 0),
     isActive: Boolean(r.is_active),
+    campaignName: r.campaign_name != null && String(r.campaign_name).trim() !== "" ? String(r.campaign_name) : null,
+    startsAt: r.starts_at instanceof Date ? r.starts_at.toISOString() : r.starts_at != null ? String(r.starts_at) : null,
+    expiresAt: r.expires_at instanceof Date ? r.expires_at.toISOString() : r.expires_at != null ? String(r.expires_at) : null,
+    maxUsesPerUser: r.max_uses_per_user != null ? Number(r.max_uses_per_user) : null,
+    targetMode: String(r.target_mode ?? "all_in_scope") === "specific" ? "specific" : "all_in_scope",
+    targets,
     createdAt: r.created_at instanceof Date ? r.created_at.toISOString() : String(r.created_at ?? ""),
     updatedAt: r.updated_at instanceof Date ? r.updated_at.toISOString() : String(r.updated_at ?? ""),
   };
 }
 
+async function loadCouponTargets(couponId: string): Promise<DiscountCoupon["targets"]> {
+  try {
+    const rows = await sql`
+      SELECT target_type, target_id FROM "DiscountCouponTarget" WHERE coupon_id = ${couponId}
+    `;
+    return (rows as Record<string, unknown>[]).map((t) => ({
+      targetType: String(t.target_type) as CouponTargetType,
+      targetId: String(t.target_id),
+    }));
+  } catch {
+    return [];
+  }
+}
+
+async function replaceCouponTargets(
+  couponId: string,
+  targets: Array<{ targetType: CouponTargetType; targetId: string }>,
+): Promise<void> {
+  await sql`DELETE FROM "DiscountCouponTarget" WHERE coupon_id = ${couponId}`;
+  for (const t of targets) {
+    const tid = t.targetId.trim();
+    if (!tid) continue;
+    await sql`
+      INSERT INTO "DiscountCouponTarget" (coupon_id, target_type, target_id)
+      VALUES (${couponId}, ${t.targetType}, ${tid})
+      ON CONFLICT DO NOTHING
+    `;
+  }
+}
+
+function generateCouponCodeString(): string {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let s = "";
+  for (let i = 0; i < 8; i++) s += chars[Math.floor(Math.random() * chars.length)];
+  return s;
+}
+
 export async function listDiscountCoupons(): Promise<DiscountCoupon[]> {
   await ensureLmsFeaturesSchema();
-  const rows = await sql`SELECT * FROM "DiscountCoupon" ORDER BY created_at DESC`;
-  return (rows as Record<string, unknown>[]).map(mapCoupon);
+  try {
+    const rows = await sql`SELECT * FROM "DiscountCoupon" ORDER BY created_at DESC`;
+    const out: DiscountCoupon[] = [];
+    for (const r of rows as Record<string, unknown>[]) {
+      const targets = await loadCouponTargets(String(r.id));
+      out.push(mapCoupon(r, targets));
+    }
+    return out;
+  } catch {
+    return [];
+  }
 }
 
 export async function getDiscountCouponByCode(code: string): Promise<DiscountCoupon | null> {
   await ensureLmsFeaturesSchema();
   const c = code.trim().toUpperCase();
   if (!c) return null;
-  const rows = await sql`SELECT * FROM "DiscountCoupon" WHERE UPPER(code) = ${c} LIMIT 1`;
-  const r = rows[0] as Record<string, unknown> | undefined;
-  return r ? mapCoupon(r) : null;
+  try {
+    const rows = await sql`SELECT * FROM "DiscountCoupon" WHERE UPPER(code) = ${c} LIMIT 1`;
+    const r = rows[0] as Record<string, unknown> | undefined;
+    if (!r) return null;
+    const targets = await loadCouponTargets(String(r.id));
+    return mapCoupon(r, targets);
+  } catch {
+    return null;
+  }
 }
 
-export async function createDiscountCoupon(data: {
-  code: string;
+export type CreateDiscountCouponInput = {
+  code?: string;
   discountType: "percent" | "fixed";
   amount: number;
-  scope: "course" | "library" | "subscription";
+  scope: CouponScope;
   usageMode: "fixed" | "unlimited";
   maxUses?: number | null;
+  maxUsesPerUser?: number | null;
   isActive?: boolean;
-}): Promise<DiscountCoupon> {
+  campaignName?: string | null;
+  startsAt?: string | Date | null;
+  expiresAt?: string | Date | null;
+  targetMode?: "all_in_scope" | "specific";
+  targets?: Array<{ targetType: CouponTargetType; targetId: string }>;
+  batchCount?: number;
+};
+
+export async function createDiscountCoupon(data: CreateDiscountCouponInput): Promise<DiscountCoupon> {
+  const batch = await createDiscountCouponsBatch({ ...data, batchCount: 1 });
+  return batch[0];
+}
+
+export async function createDiscountCouponsBatch(data: CreateDiscountCouponInput): Promise<DiscountCoupon[]> {
   await ensureLmsFeaturesSchema();
-  const id = generateId();
-  const code = data.code.trim().toUpperCase();
-  await sql`
-    INSERT INTO "DiscountCoupon" (id, code, discount_type, amount, scope, usage_mode, max_uses, is_active)
-    VALUES (
-      ${id}, ${code}, ${data.discountType}, ${data.amount}, ${data.scope},
-      ${data.usageMode}, ${data.usageMode === "fixed" ? data.maxUses ?? 1 : null},
-      ${data.isActive !== false}
-    )
-  `;
-  const rows = await sql`SELECT * FROM "DiscountCoupon" WHERE id = ${id} LIMIT 1`;
-  return mapCoupon(rows[0] as Record<string, unknown>);
+  const n = Math.min(Math.max(Number(data.batchCount) || 1, 1), 200);
+  const scope = COUPON_SCOPES.includes(data.scope) ? data.scope : "course";
+  const targetMode = data.targetMode === "specific" ? "specific" : "all_in_scope";
+  const targets = Array.isArray(data.targets) ? data.targets : [];
+  const startsAt =
+    data.startsAt != null && String(data.startsAt).trim() !== "" ? new Date(data.startsAt) : null;
+  const expiresAt =
+    data.expiresAt != null && String(data.expiresAt).trim() !== "" ? new Date(data.expiresAt) : null;
+  const maxUsesPerUser =
+    data.maxUsesPerUser != null && Number.isFinite(Number(data.maxUsesPerUser))
+      ? Math.max(1, Math.floor(Number(data.maxUsesPerUser)))
+      : null;
+  const maxUses =
+    data.usageMode === "fixed"
+      ? Math.max(1, Math.floor(Number(data.maxUses) || 1))
+      : null;
+  const amount = Math.max(0, Number(data.amount) || 0);
+  const campaignName = data.campaignName?.trim() || null;
+  const created: DiscountCoupon[] = [];
+  const seen = new Set<string>();
+
+  for (let i = 0; i < n; i++) {
+    let code =
+      n === 1 && data.code?.trim()
+        ? data.code.trim().toUpperCase()
+        : generateCouponCodeString();
+    while (seen.has(code)) code = generateCouponCodeString();
+    seen.add(code);
+    const id = generateId();
+    await sql`
+      INSERT INTO "DiscountCoupon" (
+        id, code, discount_type, amount, scope, usage_mode, max_uses, is_active,
+        campaign_name, starts_at, expires_at, max_uses_per_user, target_mode
+      )
+      VALUES (
+        ${id}, ${code}, ${data.discountType === "fixed" ? "fixed" : "percent"}, ${amount}, ${scope},
+        ${data.usageMode === "fixed" ? "fixed" : "unlimited"}, ${maxUses},
+        ${data.isActive !== false}, ${campaignName}, ${startsAt}, ${expiresAt},
+        ${maxUsesPerUser}, ${targetMode}
+      )
+    `;
+    if (targetMode === "specific" && targets.length > 0) {
+      await replaceCouponTargets(id, targets);
+    }
+    const rows = await sql`SELECT * FROM "DiscountCoupon" WHERE id = ${id} LIMIT 1`;
+    created.push(mapCoupon(rows[0] as Record<string, unknown>, targetMode === "specific" ? targets : []));
+  }
+  return created;
 }
 
 export async function updateDiscountCoupon(
@@ -233,10 +433,16 @@ export async function updateDiscountCoupon(
     code: string;
     discountType: "percent" | "fixed";
     amount: number;
-    scope: "course" | "library" | "subscription";
+    scope: CouponScope;
     usageMode: "fixed" | "unlimited";
     maxUses: number | null;
+    maxUsesPerUser: number | null;
     isActive: boolean;
+    campaignName: string | null;
+    startsAt: string | Date | null;
+    expiresAt: string | Date | null;
+    targetMode: "all_in_scope" | "specific";
+    targets: Array<{ targetType: CouponTargetType; targetId: string }>;
   }>,
 ): Promise<void> {
   await ensureLmsFeaturesSchema();
@@ -252,8 +458,25 @@ export async function updateDiscountCoupon(
     await sql`UPDATE "DiscountCoupon" SET usage_mode = ${data.usageMode}, updated_at = NOW() WHERE id = ${id}`;
   if (data.maxUses !== undefined)
     await sql`UPDATE "DiscountCoupon" SET max_uses = ${data.maxUses}, updated_at = NOW() WHERE id = ${id}`;
+  if (data.maxUsesPerUser !== undefined)
+    await sql`UPDATE "DiscountCoupon" SET max_uses_per_user = ${data.maxUsesPerUser}, updated_at = NOW() WHERE id = ${id}`;
   if (data.isActive !== undefined)
     await sql`UPDATE "DiscountCoupon" SET is_active = ${data.isActive}, updated_at = NOW() WHERE id = ${id}`;
+  if (data.campaignName !== undefined)
+    await sql`UPDATE "DiscountCoupon" SET campaign_name = ${data.campaignName?.trim() || null}, updated_at = NOW() WHERE id = ${id}`;
+  if (data.startsAt !== undefined) {
+    const v = data.startsAt != null && String(data.startsAt).trim() !== "" ? new Date(data.startsAt) : null;
+    await sql`UPDATE "DiscountCoupon" SET starts_at = ${v}, updated_at = NOW() WHERE id = ${id}`;
+  }
+  if (data.expiresAt !== undefined) {
+    const v = data.expiresAt != null && String(data.expiresAt).trim() !== "" ? new Date(data.expiresAt) : null;
+    await sql`UPDATE "DiscountCoupon" SET expires_at = ${v}, updated_at = NOW() WHERE id = ${id}`;
+  }
+  if (data.targetMode !== undefined)
+    await sql`UPDATE "DiscountCoupon" SET target_mode = ${data.targetMode}, updated_at = NOW() WHERE id = ${id}`;
+  if (data.targets !== undefined) {
+    await replaceCouponTargets(id, data.targets);
+  }
 }
 
 export async function deleteDiscountCoupon(id: string): Promise<void> {
@@ -262,36 +485,121 @@ export async function deleteDiscountCoupon(id: string): Promise<void> {
 }
 
 export type CouponValidation =
-  | { ok: true; coupon: DiscountCoupon; discountedPrice: number }
+  | { ok: true; coupon: DiscountCoupon; discountedPrice: number; originalPrice: number }
   | { ok: false; error: string };
+
+function computeDiscountedPrice(coupon: DiscountCoupon, originalPrice: number): number {
+  let discounted = originalPrice;
+  if (coupon.discountType === "percent") {
+    discounted = Math.max(0, originalPrice * (1 - coupon.amount / 100));
+  } else {
+    discounted = Math.max(0, originalPrice - coupon.amount);
+  }
+  return Math.round(discounted * 100) / 100;
+}
+
+function scopeMatches(couponScope: CouponScope, purchaseScope: CouponScope): boolean {
+  if (couponScope === "all") return true;
+  if (purchaseScope === "library" && (couponScope === "library" || couponScope === "store")) return true;
+  if (purchaseScope === "store" && (couponScope === "store" || couponScope === "library")) return true;
+  return couponScope === purchaseScope;
+}
+
+function targetTypeForScope(scope: CouponScope): CouponTargetType | null {
+  if (scope === "course") return "course";
+  if (scope === "subscription") return "subscription_plan";
+  if (scope === "store" || scope === "library") return "store_product";
+  return null;
+}
 
 export async function validateAndPreviewCoupon(opts: {
   code: string;
-  scope: "course" | "library" | "subscription";
+  scope: CouponScope;
   originalPrice: number;
+  targetId?: string | null;
+  userId?: string | null;
 }): Promise<CouponValidation> {
   const coupon = await getDiscountCouponByCode(opts.code);
-  if (!coupon || !coupon.isActive) return { ok: false, error: "Invalid coupon" };
-  if (coupon.scope !== opts.scope) return { ok: false, error: "Coupon not valid for this purchase" };
+  if (!coupon || !coupon.isActive) return { ok: false, error: "كوبون غير صالح أو غير مفعّل" };
+  if (!scopeMatches(coupon.scope, opts.scope)) {
+    return { ok: false, error: "هذا الكوبون غير صالح لهذا النوع من المشتريات" };
+  }
+  const now = Date.now();
+  if (coupon.startsAt) {
+    const s = new Date(coupon.startsAt).getTime();
+    if (!Number.isNaN(s) && now < s) return { ok: false, error: "لم تبدأ صلاحية هذا الكوبون بعد" };
+  }
+  if (coupon.expiresAt) {
+    const e = new Date(coupon.expiresAt).getTime();
+    if (!Number.isNaN(e) && now > e) return { ok: false, error: "انتهت صلاحية هذا الكوبون" };
+  }
   if (coupon.usageMode === "fixed" && coupon.maxUses != null && coupon.usedCount >= coupon.maxUses) {
-    return { ok: false, error: "Coupon usage limit reached" };
+    return { ok: false, error: "تم استنفاذ مرات استخدام هذا الكوبون" };
   }
-  let discounted = opts.originalPrice;
-  if (coupon.discountType === "percent") {
-    discounted = Math.max(0, opts.originalPrice * (1 - coupon.amount / 100));
-  } else {
-    discounted = Math.max(0, opts.originalPrice - coupon.amount);
+  if (coupon.targetMode === "specific") {
+    const tid = opts.targetId?.trim();
+    if (!tid) return { ok: false, error: "هذا الكوبون مقيّد بمنتجات محددة" };
+    const expected = targetTypeForScope(opts.scope);
+    const ok = coupon.targets.some(
+      (t) => t.targetId === tid && (expected == null || t.targetType === expected || coupon.scope === "all"),
+    );
+    if (!ok) return { ok: false, error: "هذا الكوبون غير صالح لهذا المنتج" };
   }
-  return { ok: true, coupon, discountedPrice: Math.round(discounted * 100) / 100 };
+  if (opts.userId && coupon.maxUsesPerUser != null) {
+    try {
+      const rows = await sql`
+        SELECT COUNT(*)::int AS c FROM "DiscountCouponRedemption"
+        WHERE coupon_id = ${coupon.id} AND user_id = ${opts.userId}
+      `;
+      const c = Number((rows[0] as { c?: number })?.c ?? 0);
+      if (c >= coupon.maxUsesPerUser) {
+        return { ok: false, error: "تجاوزت الحد الأقصى لاستخدام هذا الكوبون" };
+      }
+    } catch {
+      /* ignore if table missing */
+    }
+  }
+  const discountedPrice = computeDiscountedPrice(coupon, Math.max(0, opts.originalPrice));
+  return {
+    ok: true,
+    coupon,
+    discountedPrice,
+    originalPrice: Math.max(0, opts.originalPrice),
+  };
 }
 
-export async function consumeCoupon(couponId: string): Promise<void> {
+export async function consumeCoupon(
+  couponId: string,
+  opts?: {
+    userId?: string;
+    scope?: string;
+    targetId?: string | null;
+    originalPrice?: number;
+    discountedPrice?: number;
+  },
+): Promise<void> {
   await ensureLmsFeaturesSchema();
   await sql`
     UPDATE "DiscountCoupon"
     SET used_count = used_count + 1, updated_at = NOW()
     WHERE id = ${couponId}
   `;
+  if (opts?.userId) {
+    const id = generateId();
+    try {
+      await sql`
+        INSERT INTO "DiscountCouponRedemption" (
+          id, coupon_id, user_id, scope, target_id, original_price, discounted_price
+        )
+        VALUES (
+          ${id}, ${couponId}, ${opts.userId}, ${opts.scope ?? ""}, ${opts.targetId ?? null},
+          ${opts.originalPrice ?? 0}, ${opts.discountedPrice ?? 0}
+        )
+      `;
+    } catch {
+      /* optional */
+    }
+  }
 }
 
 // ─── LessonWatchProgress ────────────────────────────────────────────────────
@@ -695,7 +1003,7 @@ export async function getEffectivePermissions(
     canCreateForumTopics: true,
     canModerateForum: role === "ADMIN" || role === "ASSISTANT_ADMIN",
     canManageLibrary: role === "ADMIN" || role === "ASSISTANT_ADMIN",
-    canManageCoupons: role === "ADMIN",
+    canManageCoupons: role === "ADMIN" || role === "ASSISTANT_ADMIN",
     canViewAnalytics: role === "ADMIN",
   };
   try {
@@ -794,6 +1102,32 @@ export async function upsertPermissionOverride(data: {
 export async function deletePermissionOverride(id: string): Promise<void> {
   await ensureLmsFeaturesSchema();
   await sql`DELETE FROM "PermissionOverride" WHERE id = ${id}`;
+}
+
+/** حالة صلاحيات مستخدم محدد: الفعّالة + هل يوجد تجاوز على مستوى الحساب */
+export async function getUserPermissionState(
+  userId: string,
+  role: string,
+): Promise<{
+  flags: PermissionFlags;
+  hasUserOverride: boolean;
+  overrideId: string | null;
+}> {
+  await ensureLmsFeaturesSchema();
+  const flags = await getEffectivePermissions(userId, role);
+  try {
+    const rows = await sql`
+      SELECT id FROM "PermissionOverride" WHERE user_id = ${userId} LIMIT 1
+    `;
+    const id = (rows[0] as { id?: string } | undefined)?.id;
+    return {
+      flags,
+      hasUserOverride: !!id,
+      overrideId: id ? String(id) : null,
+    };
+  } catch {
+    return { flags, hasUserOverride: false, overrideId: null };
+  }
 }
 
 // ─── Message unread helpers ─────────────────────────────────────────────────

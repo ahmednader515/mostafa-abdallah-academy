@@ -4,6 +4,7 @@ import Link from "next/link";
 import { authOptions } from "@/lib/auth";
 import { getCourseForEdit } from "@/lib/db";
 import { getCourseAccessFields } from "@/lib/lms-spec-db";
+import { getCourseCertificateTemplateId } from "@/lib/certificate-templates-db";
 import { canManageCourse } from "@/lib/permissions";
 import { EditCourseForm, type ContentOrderEntry } from "./EditCourseForm";
 
@@ -63,6 +64,12 @@ export default async function EditCoursePage({ params }: Props) {
   } catch {
     accessFields = null;
   }
+  let certificateTemplateId = "";
+  try {
+    certificateTemplateId = (await getCourseCertificateTemplateId(id)) ?? "";
+  } catch {
+    certificateTemplateId = "";
+  }
   const initialData = {
     id: String(c.id ?? ""),
     titleEn: String(c.title ?? ""),
@@ -73,6 +80,17 @@ export default async function EditCoursePage({ params }: Props) {
     shortDescEn: String(c.shortDescEn ?? c.short_desc_en ?? ""),
     imageUrl: String(c.imageUrl ?? c.image_url ?? ""),
     price: String(Number(c.price ?? 0)),
+    compareAtPrice:
+      (c as { compareAtPrice?: unknown; compare_at_price?: unknown }).compareAtPrice != null ||
+      (c as { compare_at_price?: unknown }).compare_at_price != null
+        ? String(
+            Number(
+              (c as { compareAtPrice?: unknown; compare_at_price?: unknown }).compareAtPrice ??
+                (c as { compare_at_price?: unknown }).compare_at_price ??
+                ""
+            )
+          )
+        : "",
     duration: String(c.duration ?? ""),
     level: String(c.level ?? ""),
     isPublished: Boolean(c.isPublished ?? c.is_published ?? true),
@@ -82,6 +100,7 @@ export default async function EditCoursePage({ params }: Props) {
     accessDurationDays: accessFields?.accessDurationDays ?? null,
     deliveryMode: (accessFields?.deliveryMode ?? "recorded") as "recorded" | "live" | "hybrid",
     isVisible: accessFields?.isVisible ?? true,
+    certificateTemplateId,
     lessons: data.lessons.map((l) => {
       const row = l as Record<string, unknown>;
       const rawAttachments = Array.isArray(row.attachments)
@@ -106,6 +125,7 @@ export default async function EditCoursePage({ params }: Props) {
         pdfUrl: attachments[0]?.fileUrl || pdfUrl,
         attachments,
         acceptsHomework: Boolean(row.acceptsHomework ?? row.accepts_homework ?? false),
+        isPreview: Boolean(row.isPreview ?? row.is_preview ?? false),
       };
     }),
     quizzes: data.quizzes.map((q) => {

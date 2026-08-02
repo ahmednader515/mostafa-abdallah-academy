@@ -2,8 +2,10 @@
 
 import { useMemo, useState } from "react";
 import { CourseCard } from "@/components/CourseCard";
-import { HorizontalScrollRow } from "@/components/HorizontalScrollRow";
 import { useLocale, useT } from "@/components/LocaleProvider";
+
+const COURSE_GRID_CLASS =
+  "grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3";
 
 type CategoryShape = {
   slug?: string;
@@ -193,20 +195,20 @@ export function TeacherCoursesSearch({
               <h2 className="mb-4 text-xl font-semibold text-[var(--color-foreground)]">
                 {group.label}
               </h2>
-              <HorizontalScrollRow>
+              <div className={COURSE_GRID_CLASS}>
                 {group.courses.map((course) => (
-                  <CourseCard key={course.id} course={toCourseCardProps(course)} />
+                  <CourseCard key={course.id} course={toCourseCardProps(course)} layout="grid" />
                 ))}
-              </HorizontalScrollRow>
+              </div>
             </section>
           ))}
         </div>
       ) : (
-        <HorizontalScrollRow>
+        <div className={COURSE_GRID_CLASS}>
           {filtered.map((course) => (
-            <CourseCard key={course.id} course={toCourseCardProps(course)} />
+            <CourseCard key={course.id} course={toCourseCardProps(course)} layout="grid" />
           ))}
-        </HorizontalScrollRow>
+        </div>
       )}
     </>
   );

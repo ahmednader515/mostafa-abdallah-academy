@@ -51,6 +51,14 @@ export default async function StudentSubscriptionsPage() {
             {t("studentDash.coversLibrary", "Library covered")}:{" "}
             {overview.subscription.coversLibrary ? t("common.yes", "Yes") : t("common.no", "No")}
           </p>
+          {overview.subscription.planId ? (
+            <Link
+              href={`/subscriptions/${encodeURIComponent(overview.subscription.planId)}`}
+              className="mt-3 inline-flex text-sm font-semibold text-[var(--color-primary)] underline"
+            >
+              {t("subscriptions.viewDetails", "التفاصيل")}
+            </Link>
+          ) : null}
         </div>
       ) : null}
       {enabled ? (

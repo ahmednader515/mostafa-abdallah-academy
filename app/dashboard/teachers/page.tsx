@@ -41,6 +41,8 @@ export default async function TeachersAdminPage() {
         homepageOrder: normalizeTeacherHomepageOrder(
           (u as { teacher_homepage_order?: unknown }).teacher_homepage_order,
         ),
+        visibleOnHomepage:
+          (u as { teacher_visible_on_homepage?: boolean | null }).teacher_visible_on_homepage !== false,
         bio: (u as { teacher_bio?: string | null }).teacher_bio ?? null,
         permissions,
       };

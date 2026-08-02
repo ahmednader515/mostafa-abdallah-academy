@@ -1,19 +1,10 @@
 import type { MetadataRoute } from "next";
 
-function siteOrigin(): string {
-  const primary = process.env.NEXT_PUBLIC_PRIMARY_DOMAIN?.trim();
-  if (primary) {
-    return primary.startsWith("http")
-      ? primary.replace(/\/$/, "")
-      : `https://${primary.replace(/\/$/, "")}`;
-  }
-  const auth = process.env.NEXTAUTH_URL?.trim();
-  if (auth) return auth.replace(/\/$/, "");
-  return "http://localhost:3000";
-}
+/** Hard-coded for Search Console: always advertise the canonical www host. */
+const SITEMAP_URL = "https://www.worldway.net/sitemap.xml";
+const HOST = "www.worldway.net";
 
 export default function robots(): MetadataRoute.Robots {
-  const base = siteOrigin();
   return {
     rules: [
       {
@@ -33,7 +24,7 @@ export default function robots(): MetadataRoute.Robots {
         ],
       },
     ],
-    sitemap: `${base}/sitemap.xml`,
-    host: base.replace(/^https?:\/\//, ""),
+    sitemap: SITEMAP_URL,
+    host: HOST,
   };
 }

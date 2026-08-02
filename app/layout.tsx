@@ -28,6 +28,7 @@ import { LabelsProvider } from "@/components/LabelsProvider";
 import { CurrencyProvider } from "@/components/CurrencyProvider";
 import { homepageDefaultForLocale } from "@/lib/homepage-default-for-locale";
 import { pickLocalizedText } from "@/lib/i18n/localized-field";
+import { getSiteOrigin } from "@/lib/site-url";
 import {
   HOMEPAGE_DEFAULT_FOOTER_COPYRIGHT_AR,
   HOMEPAGE_DEFAULT_FOOTER_TAGLINE_AR,
@@ -44,6 +45,11 @@ import {
   BRAND_TAGLINE_EN,
 } from "@/lib/brand";
 import { parseNavTabs } from "@/lib/nav-tabs";
+import {
+  listPolicyNavLinksForFooter,
+  listPolicyNavLinksForHeader,
+  parsePolicyCards,
+} from "@/lib/policy-cards";
 
 const cairo = localFont({
   src: [
@@ -79,13 +85,7 @@ export async function generateMetadata(): Promise<Metadata> {
     return {
       title,
       description,
-      metadataBase: new URL(
-        process.env.NEXT_PUBLIC_PRIMARY_DOMAIN?.startsWith("http")
-          ? process.env.NEXT_PUBLIC_PRIMARY_DOMAIN
-          : process.env.NEXT_PUBLIC_PRIMARY_DOMAIN
-            ? `https://${process.env.NEXT_PUBLIC_PRIMARY_DOMAIN}`
-            : process.env.NEXTAUTH_URL || "http://localhost:3000",
-      ),
+      metadataBase: new URL(getSiteOrigin()),
       openGraph: {
         title,
         description,
@@ -341,6 +341,8 @@ fbq('init','${facebookPixelId}');`}
                 platformNameColor2={homepageSettingsResult?.platformNameColor2 ?? null}
                 showPlatformName={homepageSettingsResult?.showPlatformName !== false}
                 showPlatformLogo={homepageSettingsResult?.showPlatformLogo !== false}
+                authLoginBody={homepageSettingsResult?.authLoginBody ?? null}
+                authLoginBodyEn={homepageSettingsResult?.authLoginBodyEn ?? null}
               >
                 <SessionProvider>
                   <StoreSplashProvider>
@@ -357,11 +359,17 @@ fbq('init','${facebookPixelId}');`}
                       }
                       socialLinks={socialLinks}
                       navTabs={parseNavTabs(homepageSettingsResult?.navTabsJson)}
+                      policyLinks={listPolicyNavLinksForHeader(
+                        parsePolicyCards(homepageSettingsResult?.policyCardsJson ?? null),
+                      )}
                       footer={
                         <Footer
                           footerTitle={footerTitle}
                           footerTagline={footerTagline}
                           footerCopyright={footerCopyright}
+                          policyLinks={listPolicyNavLinksForFooter(
+                            parsePolicyCards(homepageSettingsResult?.policyCardsJson ?? null),
+                          )}
                         />
                       }
                     >

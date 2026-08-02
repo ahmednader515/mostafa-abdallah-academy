@@ -52,15 +52,13 @@ export default async function StudentLivePage() {
             <article key={String(s.id)} className="rounded-2xl border border-[var(--color-border)] p-4">
               <p className="text-xs text-[var(--color-muted)]">{status}</p>
               <h3 className="mt-1 font-semibold">{title}</h3>
-              {meeting ? (
-                <a
-                  href={meeting}
-                  target="_blank"
-                  rel="noopener noreferrer"
+              {meeting && s.id ? (
+                <Link
+                  href={`/live/${encodeURIComponent(String(s.id))}`}
                   className="mt-3 inline-flex rounded bg-[var(--color-primary)] px-4 py-2 text-sm font-semibold text-white"
                 >
-                  {t("studentDash.joinLive", "Join stream")}
-                </a>
+                  {t("studentDash.joinLive", "Watch on platform")}
+                </Link>
               ) : null}
             </article>
           );

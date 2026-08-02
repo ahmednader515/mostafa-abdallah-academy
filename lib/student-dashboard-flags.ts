@@ -5,6 +5,7 @@ export type StudentDashboardSectionKey =
   | "courses"
   | "progress"
   | "subscriptions"
+  | "wallet"
   | "purchases"
   | "library"
   | "exams"
@@ -24,6 +25,7 @@ export const STUDENT_DASHBOARD_SECTION_KEYS: StudentDashboardSectionKey[] = [
   "courses",
   "progress",
   "subscriptions",
+  "wallet",
   "purchases",
   "library",
   "exams",
@@ -42,6 +44,7 @@ export const DEFAULT_STUDENT_DASHBOARD_FLAGS: StudentDashboardFlags = {
   courses: true,
   progress: true,
   subscriptions: true,
+  wallet: true,
   purchases: true,
   library: true,
   exams: true,
@@ -70,14 +73,15 @@ export const STUDENT_DASHBOARD_SECTION_META: {
     labelAr: "الاشتراكات",
     labelEn: "Subscriptions",
   },
+  { key: "wallet", href: "/dashboard/wallet", labelAr: "المحفظة", labelEn: "Wallet" },
   { key: "purchases", href: "/dashboard/purchases", labelAr: "المشتريات", labelEn: "Purchases" },
   { key: "library", href: "/dashboard/my-library", labelAr: "مكتبتي", labelEn: "My library" },
   { key: "exams", href: "/dashboard/my-exams", labelAr: "اختبارات وشهادات", labelEn: "Exams & certs" },
   {
     key: "homework",
     href: "/dashboard/my-homework",
-    labelAr: "الواجبات",
-    labelEn: "Homework",
+    labelAr: "الاختبارات العملية",
+    labelEn: "Practical exams",
   },
   { key: "messages", href: "/dashboard/messages", labelAr: "الرسائل", labelEn: "Messages" },
   {

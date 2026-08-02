@@ -1,12 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useSession, signOut } from "next-auth/react";
+import { useSession } from "next-auth/react";
 import { useState, useRef, useEffect } from "react";
 import type { UserRole } from "@/lib/types";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { LanguageToggle } from "@/components/LanguageToggle";
 import { useT } from "@/components/LocaleProvider";
+import { signOutFully } from "@/lib/client-sign-out";
 
 function UserMenu() {
   const { data: session, status } = useSession();
@@ -62,14 +63,9 @@ function UserMenu() {
           <button
             type="button"
             className="w-full px-3 py-2 text-start text-sm text-red-600 hover:bg-[var(--color-border)]/50 dark:text-red-400"
-            onClick={async () => {
+            onClick={() => {
               setOpen(false);
-              try {
-                await fetch("/api/auth/clear-session", { method: "POST", credentials: "include" });
-              } catch {
-                /* تجاهل خطأ الشبكة */
-              }
-              signOut({ callbackUrl: "/" });
+              void signOutFully({ callbackUrl: "/", reason: "manual" });
             }}
           >
             {t("header.logout", "Log out")}

@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { buyStoreProduct } from "@/lib/db";
+import { buyStoreProduct, sql } from "@/lib/db";
 import { recordLandingPageEventBySlug } from "@/lib/landing-pages-db";
 import { trackMetaCapiServer } from "@/lib/meta-capi-server";
+import { consumeCoupon, validateAndPreviewCoupon } from "@/lib/lms-features-db";
 
 export async function POST(request: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -12,7 +13,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "الشراء متاح للطلاب فقط" }, { status: 403 });
   }
 
-  let body: { productId?: string; landingPageSlug?: string; metaEventId?: string };
+  let body: { productId?: string; landingPageSlug?: string; metaEventId?: string; couponCode?: string };
   try {
     body = await request.json();
   } catch {
@@ -23,15 +24,52 @@ export async function POST(request: NextRequest) {
   const landingPageSlug = body.landingPageSlug?.trim();
   const purchaseEventId =
     body.metaEventId?.trim() || request.headers.get("x-meta-event-id")?.trim() || undefined;
+  const couponCode = body.couponCode?.trim();
 
   try {
+    let priceOverride: number | undefined;
+    let appliedCouponId: string | null = null;
+    let originalPrice = 0;
+
+    if (couponCode) {
+      const productRows = await sql`
+        SELECT price FROM "StoreProduct" WHERE id = ${productId} AND is_active = true LIMIT 1
+      `;
+      originalPrice = Number((productRows[0] as { price?: unknown } | undefined)?.price ?? 0);
+      if (originalPrice > 0) {
+        const preview = await validateAndPreviewCoupon({
+          code: couponCode,
+          scope: "store",
+          originalPrice,
+          targetId: productId,
+          userId: session.user.id,
+        });
+        if (!preview.ok) {
+          return NextResponse.json({ error: preview.error }, { status: 400 });
+        }
+        priceOverride = preview.discountedPrice;
+        appliedCouponId = preview.coupon.id;
+      }
+    }
+
     if (landingPageSlug) {
       await recordLandingPageEventBySlug(landingPageSlug, "checkout_start", {
         type: "store_product",
         productId,
       });
     }
-    const out = await buyStoreProduct(session.user.id, productId);
+    const out = await buyStoreProduct(session.user.id, productId, { priceOverride });
+
+    if (appliedCouponId && !out.alreadyOwned) {
+      await consumeCoupon(appliedCouponId, {
+        userId: session.user.id,
+        scope: "store",
+        targetId: productId,
+        originalPrice,
+        discountedPrice: out.pricePaid,
+      }).catch(() => undefined);
+    }
+
     if (landingPageSlug) {
       await recordLandingPageEventBySlug(landingPageSlug, "purchase", {
         type: "store_product",

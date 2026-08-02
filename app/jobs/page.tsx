@@ -1,40 +1,62 @@
-import Link from "next/link";
-import { listPublishedJobs } from "@/lib/db";
-import { pickLocalizedText } from "@/lib/i18n/localized-field";
-import { getLocaleFromCookie, getServerTranslator } from "@/lib/i18n/server";
+import { getJobsHeroImageUrl, listJobCategories, listPublishedJobs } from "@/lib/db";
+import type { JobCategory, JobPosting } from "@/lib/types";
+import { JobsBrowseClient } from "./JobsBrowseClient";
+
+export const dynamic = "force-dynamic";
+
+function toJob(j: Awaited<ReturnType<typeof listPublishedJobs>>[number]): JobPosting {
+  return {
+    id: j.id,
+    title: j.title,
+    titleAr: j.titleAr,
+    description: j.description,
+    descriptionAr: j.descriptionAr,
+    location: j.location,
+    jobType: j.jobType,
+    imageUrl: j.imageUrl,
+    email: j.email,
+    phone: j.phone,
+    phones: j.phones,
+    whatsapp: j.whatsapp,
+    locationEn: j.locationEn,
+    jobTypeAr: j.jobTypeAr,
+    jobTypeEn: j.jobTypeEn,
+    categoryId: j.categoryId,
+    companyName: j.companyName,
+    salaryMin: j.salaryMin,
+    salaryMax: j.salaryMax,
+    salaryLabel: j.salaryLabel,
+    experienceLabel: j.experienceLabel,
+    skills: j.skills,
+    badge: j.badge,
+    showPhone: j.showPhone,
+    showEmail: j.showEmail,
+    contactOrder: j.contactOrder,
+    viewCount: j.viewCount,
+    isPublished: j.isPublished,
+    order: j.order,
+    createdAt: j.createdAt,
+    updatedAt: j.updatedAt,
+  };
+}
 
 export default async function JobsPage() {
-  const [t, locale] = await Promise.all([getServerTranslator(), getLocaleFromCookie()]);
-  const jobs = await listPublishedJobs().catch(() => []);
+  const [jobsRaw, catsRaw, heroImageUrl] = await Promise.all([
+    listPublishedJobs().catch(() => []),
+    listJobCategories().catch(() => []),
+    getJobsHeroImageUrl().catch(() => "/images/jobs-hero.png"),
+  ]);
+  const jobs = jobsRaw.map(toJob);
+  const categories: JobCategory[] = catsRaw.map((c) => ({
+    id: c.id,
+    name: c.name,
+    nameAr: c.nameAr,
+    slug: c.slug,
+    order: c.order,
+    createdAt: c.createdAt,
+  }));
 
   return (
-    <section className="px-4 py-16 sm:px-6">
-      <div className="mx-auto max-w-4xl">
-        <h1 className="text-3xl font-bold text-[var(--color-foreground)]">{t("jobs.pageTitle", "Jobs")}</h1>
-        <p className="mt-2 text-[var(--color-muted)]">{t("jobs.pageIntro", "Browse open positions and opportunities.")}</p>
-        <div className="mt-8 space-y-4">
-          {jobs.length === 0 ? (
-            <p className="text-sm text-[var(--color-muted)]">{t("jobs.empty", "No open positions right now.")}</p>
-          ) : (
-            jobs.map((job) => {
-              const title = pickLocalizedText(locale, job.titleAr, job.title);
-              return (
-                <Link
-                  key={job.id}
-                  href={`/jobs/${job.id}`}
-                  className="block rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] p-5 shadow-[var(--shadow-card)] transition hover:border-[var(--color-primary)]/40"
-                >
-                  <h2 className="text-lg font-semibold text-[var(--color-foreground)]">{title}</h2>
-                  <div className="mt-2 flex flex-wrap gap-3 text-xs text-[var(--color-muted)]">
-                    {job.location ? <span>{job.location}</span> : null}
-                    {job.jobType ? <span>{job.jobType}</span> : null}
-                  </div>
-                </Link>
-              );
-            })
-          )}
-        </div>
-      </div>
-    </section>
+    <JobsBrowseClient jobs={jobs} categories={categories} heroImageUrl={heroImageUrl} />
   );
 }

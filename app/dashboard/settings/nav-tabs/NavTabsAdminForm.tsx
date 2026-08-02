@@ -4,7 +4,22 @@ import { useRouter } from "next/navigation";
 import { useT } from "@/components/LocaleProvider";
 import { DEFAULT_NAV_TABS, type NavTab, type NavTabIcon } from "@/lib/nav-tabs";
 
-const icons: NavTabIcon[] = ["home", "courses", "myCourses", "teachers", "library", "jobs", "forum", "live", "consultations", "exams", "account", "certs", "settings"];
+const icons: NavTabIcon[] = [
+  "home",
+  "courses",
+  "myCourses",
+  "subscriptions",
+  "teachers",
+  "library",
+  "jobs",
+  "forum",
+  "live",
+  "consultations",
+  "exams",
+  "account",
+  "certs",
+  "settings",
+];
 export function NavTabsAdminForm({ initialTabs }: { initialTabs: NavTab[] }) {
   const t = useT(), router = useRouter();
   const [tabs, setTabs] = useState((initialTabs.length ? initialTabs : DEFAULT_NAV_TABS).map((tab, order) => ({ ...tab, order })));

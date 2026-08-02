@@ -6,12 +6,16 @@ import { useT } from "@/components/LocaleProvider";
 
 export function NewThreadForm({
   categories,
+  defaultCategoryId = "",
 }: {
-  categories: { id: string; name: string }[];
+  categories: { id: string; name: string; isLocked?: boolean }[];
+  defaultCategoryId?: string;
 }) {
   const t = useT();
   const router = useRouter();
-  const [categoryId, setCategoryId] = useState(categories[0]?.id ?? "");
+  const [categoryId, setCategoryId] = useState(
+    defaultCategoryId || categories[0]?.id || "",
+  );
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [loading, setLoading] = useState(false);
@@ -60,6 +64,7 @@ export function NewThreadForm({
           {categories.map((c) => (
             <option key={c.id} value={c.id}>
               {c.name}
+              {c.isLocked ? ` (${t("forum.locked", "Locked")})` : ""}
             </option>
           ))}
         </select>

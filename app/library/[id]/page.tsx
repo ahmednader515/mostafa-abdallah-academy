@@ -2,7 +2,7 @@ import { getServerSession } from "next-auth";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { authOptions } from "@/lib/auth";
-import { getStoreProductById } from "@/lib/db";
+import { getStoreProductById, incrementStoreProductViewCount } from "@/lib/db";
 import { getServerTranslator } from "@/lib/i18n/server";
 import { MetaViewContent } from "@/components/MetaViewContent";
 
@@ -20,6 +20,7 @@ export default async function LibraryArticlePage({
   }
 
   await getServerSession(authOptions);
+  void incrementStoreProductViewCount(product.id);
 
   return (
     <article className="px-4 py-16 sm:px-6">

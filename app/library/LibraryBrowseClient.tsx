@@ -2,121 +2,55 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { FormattedPrice } from "@/components/FormattedPrice";
 import { HorizontalScrollRow } from "@/components/HorizontalScrollRow";
+import { LibraryProductCard } from "@/components/LibraryProductCard";
 import { useT } from "@/components/LocaleProvider";
 import type { LibraryCategory, StoreProduct } from "@/lib/types";
 import { newAnalyticsEventId, trackMetaEvent } from "@/lib/analytics-events";
 
-function ProductCard({
-  product,
-  isSubscribed,
-  isLoggedIn,
-  ownedIds,
-  loadingId,
-  onBuy,
-}: {
-  product: StoreProduct;
-  isSubscribed: boolean;
-  isLoggedIn: boolean;
-  ownedIds: string[];
-  loadingId: string | null;
-  onBuy: (id: string) => void;
-}) {
-  const t = useT();
-  const isArticle = product.contentType === "article";
-  const canAccess = isSubscribed || ownedIds.includes(product.id);
-  const canDownload = !isArticle && canAccess && !!product.pdfUrl;
+const HOME_PREVIEW = 8;
 
-  return (
-    <article className="w-64 shrink-0 overflow-hidden rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-[var(--shadow-card)]">
-      {product.imageUrl ? (
-        <img src={product.imageUrl} alt={product.title} className="h-40 w-full object-cover" />
-      ) : (
-        <div className="h-40 bg-[var(--color-primary)]/10" />
-      )}
-      <div className="p-4">
-        <h3 className="line-clamp-2 text-base font-semibold text-[var(--color-foreground)]">{product.title}</h3>
-        <p className="mt-2 line-clamp-2 text-xs text-[var(--color-muted)]">{product.description}</p>
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-          {isArticle ? (
-            <span className="rounded-full bg-violet-500/15 px-2 py-0.5 text-xs font-semibold text-violet-500">
-              {t("library.articleBadge", "Article")}
-            </span>
-          ) : isSubscribed ? (
-            <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-semibold text-emerald-500">
-              {t("library.freeWithSubscription", "Free with subscription")}
-            </span>
-          ) : ownedIds.includes(product.id) ? (
-            <span className="rounded-full bg-sky-500/15 px-2 py-0.5 text-xs font-semibold text-sky-400">
-              {t("library.purchased", "Purchased")}
-            </span>
-          ) : (
-            <span className="text-xs font-semibold text-[var(--color-primary)]">
-              <FormattedPrice amountEgp={Number(product.price)} />
-            </span>
-          )}
-          {isArticle ? (
-            <Link
-              href={`/library/${product.id}`}
-              className="rounded-[var(--radius-btn)] bg-[var(--color-primary)] px-3 py-1.5 text-xs font-medium text-white hover:bg-[var(--color-primary-hover)]"
-            >
-              {t("library.readArticle", "Read")}
-            </Link>
-          ) : canDownload ? (
-            <a
-              href={product.pdfUrl ?? undefined}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="rounded-[var(--radius-btn)] bg-[var(--color-primary)] px-3 py-1.5 text-xs font-medium text-white hover:bg-[var(--color-primary-hover)]"
-            >
-              {t("library.downloadPdf", "Download PDF")}
-            </a>
-          ) : canAccess ? (
-            <span className="text-xs text-[var(--color-muted)]">{t("library.fileUnavailable", "File unavailable")}</span>
-          ) : isLoggedIn ? (
-            <button
-              onClick={() => onBuy(product.id)}
-              disabled={loadingId === product.id}
-              className="rounded-[var(--radius-btn)] bg-[var(--color-primary)] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60"
-            >
-              {loadingId === product.id ? t("library.buying", "Buying…") : t("library.buy", "Buy")}
-            </button>
-          ) : (
-            <Link
-              href="/login"
-              className="rounded-[var(--radius-btn)] bg-[var(--color-primary)] px-3 py-1.5 text-xs font-semibold text-white"
-            >
-              {t("library.loginToBuy", "Login to buy")}
-            </Link>
-          )}
-        </div>
-      </div>
-    </article>
-  );
-}
+export type LibrarySubscriptionAccess = {
+  active: boolean;
+  allCategories: boolean;
+  categoryIds: string[];
+};
 
 export function LibraryBrowseClient({
   products,
   categories,
   isSubscribed,
+  librarySubscriptionAccess,
   isLoggedIn,
   purchasedProductIds,
 }: {
   products: StoreProduct[];
   categories: LibraryCategory[];
-  isSubscribed: boolean;
+  /** @deprecated استخدم librarySubscriptionAccess */
+  isSubscribed?: boolean;
+  librarySubscriptionAccess?: LibrarySubscriptionAccess;
   isLoggedIn: boolean;
   purchasedProductIds: string[];
 }) {
+  const libAccess: LibrarySubscriptionAccess = librarySubscriptionAccess ?? {
+    active: !!isSubscribed,
+    allCategories: !!isSubscribed,
+    categoryIds: [],
+  };
+  function productCoveredBySub(p: StoreProduct): boolean {
+    if (!libAccess.active) return false;
+    if (libAccess.allCategories) return true;
+    const cid = p.categoryId?.trim();
+    if (!cid) return false;
+    return libAccess.categoryIds.includes(cid);
+  }
   const t = useT();
-  const INITIAL_VISIBLE = 8;
   const [query, setQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState<"all" | "article" | "file">("all");
   const [ownedIds, setOwnedIds] = useState<string[]>(purchasedProductIds);
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [error, setError] = useState("");
-  const [visibleByCat, setVisibleByCat] = useState<Record<string, number>>({});
+  const [couponCode, setCouponCode] = useState("");
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -179,7 +113,11 @@ export function LibraryBrowseClient({
           "Content-Type": "application/json",
           "x-meta-event-id": purchaseEventId,
         },
-        body: JSON.stringify({ productId, metaEventId: purchaseEventId }),
+        body: JSON.stringify({
+          productId,
+          metaEventId: purchaseEventId,
+          couponCode: couponCode.trim() || undefined,
+        }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error ?? t("library.buyFailed", "Purchase failed"));
@@ -208,41 +146,37 @@ export function LibraryBrowseClient({
     return cat.nameAr?.trim() || cat.name;
   }
 
-  function renderRow(catId: string, label: string) {
+  function renderRow(catId: string, label: string, moreHref: string | null) {
     const items = productsByCategory.get(catId);
     if (!items?.length) return null;
-    const visible = items.slice(0, visibleByCat[catId] ?? INITIAL_VISIBLE);
-    const canShowMore = visible.length < items.length;
+    const preview = items.slice(0, HOME_PREVIEW);
     return (
       <div key={catId} className="mt-6">
-        <h3 className="mb-3 text-lg font-semibold text-[var(--color-foreground)]">{label}</h3>
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <h3 className="text-lg font-semibold text-[var(--color-foreground)]">{label}</h3>
+          {moreHref ? (
+            <Link
+              href={moreHref}
+              className="shrink-0 text-sm font-semibold text-[var(--color-primary)] hover:underline"
+            >
+              {t("library.viewMore", "عرض المزيد")} ←
+            </Link>
+          ) : null}
+        </div>
         <HorizontalScrollRow>
-          {visible.map((p) => (
-            <ProductCard
+          {preview.map((p) => (
+            <LibraryProductCard
               key={p.id}
               product={p}
-              isSubscribed={isSubscribed}
+              isSubscribed={productCoveredBySub(p)}
               isLoggedIn={isLoggedIn}
               ownedIds={ownedIds}
               loadingId={loadingId}
               onBuy={(id) => void buy(id)}
+              layout="carousel"
             />
           ))}
         </HorizontalScrollRow>
-        {canShowMore ? (
-          <button
-            type="button"
-            onClick={() =>
-              setVisibleByCat((prev) => ({
-                ...prev,
-                [catId]: (prev[catId] ?? INITIAL_VISIBLE) + INITIAL_VISIBLE,
-              }))
-            }
-            className="mt-3 text-sm font-semibold text-[var(--color-primary)] hover:underline"
-          >
-            {t("library.showMore", "Show more")}
-          </button>
-        ) : null}
       </div>
     );
   }
@@ -261,8 +195,21 @@ export function LibraryBrowseClient({
       <div className="mx-auto max-w-6xl">
         <h1 className="text-3xl font-bold text-[var(--color-foreground)]">{t("library.pageTitle", "Library")}</h1>
         <p className="mt-2 text-[var(--color-muted)]">
-          {t("library.pageIntro", "Search for files, books, or articles and choose what suits you.")}
+          {t("library.pageIntro", "Browse categories below, or open View more for the full list.")}
         </p>
+        {isLoggedIn && !libAccess.active ? (
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <input
+              value={couponCode}
+              onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+              placeholder={t("coupons.codePlaceholder", "Discount coupon code")}
+              className="min-w-[12rem] flex-1 rounded-[var(--radius-btn)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm font-mono"
+            />
+            <span className="text-xs text-[var(--color-muted)]">
+              {t("coupons.libraryHint", "Optional coupon applied on the next purchase")}
+            </span>
+          </div>
+        ) : null}
         <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center">
           <input
             value={query}
@@ -305,28 +252,61 @@ export function LibraryBrowseClient({
                 (productsByCategory.get(parent.id)?.length ?? 0) > 0 ||
                 children.some((c) => (productsByCategory.get(c.id)?.length ?? 0) > 0);
               if (!parentHas) return null;
+              const parentHref = `/library/category/${encodeURIComponent(parent.slug)}`;
               return (
                 <section key={parent.id}>
-                  <h2 className="text-2xl font-bold text-[var(--color-foreground)]">{categoryLabel(parent)}</h2>
-                  {renderRow(parent.id, t("library.generalInCategory", "General"))}
-                  {children.map((child) => renderRow(child.id, categoryLabel(child)))}
+                  <div className="mb-2 flex items-center justify-between gap-3">
+                    <h2 className="text-2xl font-bold text-[var(--color-foreground)]">
+                      {categoryLabel(parent)}
+                    </h2>
+                    <Link
+                      href={parentHref}
+                      className="shrink-0 text-sm font-semibold text-[var(--color-primary)] hover:underline"
+                    >
+                      {t("library.viewMore", "عرض المزيد")} ←
+                    </Link>
+                  </div>
+                  {renderRow(parent.id, t("library.generalInCategory", "General"), null)}
+                  {children.map((child) =>
+                    renderRow(
+                      child.id,
+                      categoryLabel(child),
+                      `/library/category/${encodeURIComponent(child.slug)}`,
+                    ),
+                  )}
                 </section>
               );
             })}
-            {renderRow("__uncategorized__", t("library.uncategorized", "Other"))}
+            {renderRow(
+              "__uncategorized__",
+              t("library.uncategorized", "Other"),
+              "/library/category/uncategorized",
+            )}
           </div>
         ) : (
           <div className="mt-8">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <h2 className="text-xl font-semibold text-[var(--color-foreground)]">
+                {t("library.allItems", "All items")}
+              </h2>
+              <Link
+                href="/library/category/all"
+                className="shrink-0 text-sm font-semibold text-[var(--color-primary)] hover:underline"
+              >
+                {t("library.viewMore", "عرض المزيد")} ←
+              </Link>
+            </div>
             <HorizontalScrollRow>
-              {filtered.map((p) => (
-                <ProductCard
+              {filtered.slice(0, HOME_PREVIEW).map((p) => (
+                <LibraryProductCard
                   key={p.id}
                   product={p}
-                  isSubscribed={isSubscribed}
+                  isSubscribed={productCoveredBySub(p)}
                   isLoggedIn={isLoggedIn}
                   ownedIds={ownedIds}
                   loadingId={loadingId}
                   onBuy={(id) => void buy(id)}
+                  layout="carousel"
                 />
               ))}
             </HorizontalScrollRow>

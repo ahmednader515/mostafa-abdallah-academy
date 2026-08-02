@@ -1,9 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { getSubscriptionsFeatureEnabled, purchasePlatformSubscription } from "@/lib/db";
+import {
+  getSubscriptionPlanById,
+  getSubscriptionsFeatureEnabled,
+  purchasePlatformSubscription,
+  resolveSubscriptionPlanPricing,
+} from "@/lib/db";
 import { recordLandingPageEventBySlug } from "@/lib/landing-pages-db";
 import { trackMetaCapiServer } from "@/lib/meta-capi-server";
+import { consumeCoupon, validateAndPreviewCoupon } from "@/lib/lms-features-db";
 
 export async function POST(request: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -14,7 +20,7 @@ export async function POST(request: NextRequest) {
   if (!enabled) {
     return NextResponse.json({ error: "ميزة الاشتراكات غير مفعّلة" }, { status: 400 });
   }
-  let body: { planId?: string; landingPageSlug?: string; metaEventId?: string };
+  let body: { planId?: string; landingPageSlug?: string; metaEventId?: string; couponCode?: string };
   try {
     body = await request.json();
   } catch {
@@ -25,14 +31,56 @@ export async function POST(request: NextRequest) {
   const landingPageSlug = body.landingPageSlug?.trim();
   const purchaseEventId =
     body.metaEventId?.trim() || request.headers.get("x-meta-event-id")?.trim() || undefined;
+  const couponCode = body.couponCode?.trim();
+
   try {
+    const plan = await getSubscriptionPlanById(planId);
+    if (!plan || !plan.is_active) {
+      return NextResponse.json({ error: "الباقة غير متاحة" }, { status: 400 });
+    }
+    const basePrice = resolveSubscriptionPlanPricing({
+      price: plan.price,
+      discountPrice: plan.discount_price,
+      discountPercent: plan.discount_percent,
+    }).chargePrice;
+
+    let priceOverride: number | undefined;
+    let appliedCouponId: string | null = null;
+    if (couponCode && basePrice > 0) {
+      const preview = await validateAndPreviewCoupon({
+        code: couponCode,
+        scope: "subscription",
+        originalPrice: basePrice,
+        targetId: planId,
+        userId: session.user.id,
+      });
+      if (!preview.ok) {
+        return NextResponse.json({ error: preview.error }, { status: 400 });
+      }
+      priceOverride = preview.discountedPrice;
+      appliedCouponId = preview.coupon.id;
+    }
+
     if (landingPageSlug) {
       await recordLandingPageEventBySlug(landingPageSlug, "checkout_start", {
         type: "subscription",
         planId,
       });
     }
-    const { expiresAt } = await purchasePlatformSubscription(session.user.id, planId);
+    const { expiresAt, pricePaid } = await purchasePlatformSubscription(session.user.id, planId, {
+      priceOverride,
+    });
+
+    if (appliedCouponId) {
+      await consumeCoupon(appliedCouponId, {
+        userId: session.user.id,
+        scope: "subscription",
+        targetId: planId,
+        originalPrice: basePrice,
+        discountedPrice: pricePaid,
+      }).catch(() => undefined);
+    }
+
     if (landingPageSlug) {
       await recordLandingPageEventBySlug(landingPageSlug, "purchase", {
         type: "subscription",
@@ -47,6 +95,7 @@ export async function POST(request: NextRequest) {
         content_type: "product",
         content_name: "subscription",
         currency: "EGP",
+        value: pricePaid,
         num_items: 1,
       },
       userData: {
@@ -58,6 +107,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       expiresAt: expiresAt.toISOString(),
+      pricePaid,
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "فشل الشراء";

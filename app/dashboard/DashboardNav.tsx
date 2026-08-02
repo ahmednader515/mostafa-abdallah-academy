@@ -29,19 +29,69 @@ function NavLink({
   );
 }
 
+function ElevatedPermissionLinks({
+  canViewAnalytics,
+  canManageLibrary,
+  canManageCoupons,
+  canPostJobs,
+}: {
+  canViewAnalytics?: boolean;
+  canManageLibrary?: boolean;
+  canManageCoupons?: boolean;
+  canPostJobs?: boolean;
+}) {
+  const t = useT();
+  return (
+    <>
+      {canViewAnalytics ? (
+        <NavLink href="/dashboard/analytics">{t("dashboardNav.analytics", "Analytics")}</NavLink>
+      ) : null}
+      {canManageCoupons ? (
+        <NavLink href="/dashboard/coupons">{t("dashboardNav.coupons", "Coupons & discounts")}</NavLink>
+      ) : null}
+      {canManageLibrary ? (
+        <NavLink href="/dashboard/library">{t("dashboardNav.platformLibrary", "Library")}</NavLink>
+      ) : null}
+      {canPostJobs ? (
+        <NavLink href="/dashboard/jobs">{t("dashboardNav.jobs", "Jobs")}</NavLink>
+      ) : null}
+    </>
+  );
+}
+
 export function DashboardNav({
   isAdmin,
   isAssistant,
   isTeacher,
   canViewAnalytics = false,
+  canManageLibrary = false,
+  canManageCoupons = false,
+  canPostJobs = false,
+  elevatedOnly = false,
 }: {
   isAdmin: boolean;
   isAssistant: boolean;
   isTeacher: boolean;
   canViewAnalytics?: boolean;
+  canManageLibrary?: boolean;
+  canManageCoupons?: boolean;
+  canPostJobs?: boolean;
+  /** عرض روابط الصلاحيات الممنوحة فقط (مثل متدرب بصلاحيات إضافية) */
+  elevatedOnly?: boolean;
 }) {
   const t = useT();
   const isStaff = isAdmin || isAssistant;
+
+  if (elevatedOnly) {
+    return (
+      <ElevatedPermissionLinks
+        canViewAnalytics={canViewAnalytics}
+        canManageLibrary={canManageLibrary}
+        canManageCoupons={canManageCoupons}
+        canPostJobs={canPostJobs}
+      />
+    );
+  }
 
   if (isTeacher) {
     return (
@@ -51,10 +101,16 @@ export function DashboardNav({
           {t("dashboardNav.createCourse", "Create course")}
         </NavLink>
         <NavLink href="/dashboard/statistics">{t("dashboardNav.studentStats", "Student statistics")}</NavLink>
-        <NavLink href="/dashboard/codes">{t("dashboardNav.createCodes", "Create codes")}</NavLink>
+        <NavLink href="/dashboard/codes">{t("dashboardNav.activationCodes", "Activation codes")}</NavLink>
         <NavLink href="/dashboard/homework">{t("dashboardNav.homework", "Student homework")}</NavLink>
         <NavLink href="/dashboard/messages">{t("dashboardNav.contactMyStudents", "Contact my students")}</NavLink>
         <NavLink href="/dashboard/live-streams">{t("dashboardNav.liveStreams", "Live streams")}</NavLink>
+        <ElevatedPermissionLinks
+          canViewAnalytics={canViewAnalytics}
+          canManageLibrary={canManageLibrary}
+          canManageCoupons={canManageCoupons}
+          canPostJobs={canPostJobs}
+        />
       </>
     );
   }
@@ -65,7 +121,7 @@ export function DashboardNav({
 
   return (
     <>
-      <NavLink href="/dashboard">
+      <NavLink href="/dashboard" exact>
         {t("dashboardNav.overview", "Overview")}
       </NavLink>
       {canViewAnalytics ? (
@@ -78,20 +134,28 @@ export function DashboardNav({
           ? t("dashboardNav.studentsAccounts", "Students & accounts")
           : t("dashboardNav.students", "Students")}
       </NavLink>
+      <NavLink href="/dashboard/wallets">
+        {t("dashboardNav.wallets", "Wallets")}
+      </NavLink>
       <NavLink href="/dashboard/statistics">
         {t("dashboardNav.studentStats", "Student statistics")}
       </NavLink>
       <NavLink href="/dashboard/password-change-requests">
         {t("dashboardNav.passwordChangeRequests", "Account change requests")}
       </NavLink>
-      <NavLink href="/dashboard/codes">{t("dashboardNav.createCodes", "Create codes")}</NavLink>
-      <NavLink href="/dashboard/coupons">{t("dashboardNav.coupons", "Coupons")}</NavLink>
+      <NavLink href="/dashboard/codes">{t("dashboardNav.activationCodes", "Activation codes")}</NavLink>
+      {canManageCoupons || isAdmin || isAssistant ? (
+        <NavLink href="/dashboard/coupons">{t("dashboardNav.coupons", "Coupons & discounts")}</NavLink>
+      ) : null}
       <NavLink href="/dashboard/homework">{t("dashboardNav.homework", "Student homework")}</NavLink>
       <NavLink href="/dashboard/messages">
         {t("dashboardNav.privateStudentMessages", "Private student messages")}
       </NavLink>
       <NavLink href="/dashboard/notifications">
         {t("dashboardNav.notifications", "Broadcast notifications")}
+      </NavLink>
+      <NavLink href="/dashboard/course-ratings">
+        {t("dashboardNav.courseRatings", "Course ratings")}
       </NavLink>
       {isAdmin && (
         <>
@@ -108,9 +172,13 @@ export function DashboardNav({
           <NavLink href="/dashboard/subscription-students">
             {t("dashboardNav.subscribedStudents", "Subscribed students")}
           </NavLink>
-          <NavLink href="/dashboard/library">{t("dashboardNav.platformLibrary", "Library")}</NavLink>
-          <NavLink href="/dashboard/jobs">{t("dashboardNav.jobs", "Jobs")}</NavLink>
         </>
+      )}
+      {(canManageLibrary || isAdmin) && (
+        <NavLink href="/dashboard/library">{t("dashboardNav.platformLibrary", "Library")}</NavLink>
+      )}
+      {(canPostJobs || isAdmin) && (
+        <NavLink href="/dashboard/jobs">{t("dashboardNav.jobs", "Jobs")}</NavLink>
       )}
       <NavLink href="/dashboard/consultations">{t("dashboardNav.consultations", "Consultations")}</NavLink>
       <NavLink href="/dashboard/external-training">
@@ -129,6 +197,7 @@ export function DashboardNav({
       </NavLink>
       <NavLink href="/dashboard/settings/search">{t("dashboardNav.searchSettings", "Search settings")}</NavLink>
       <NavLink href="/dashboard/settings/security">{t("dashboardNav.security", "Security & logs")}</NavLink>
+      <NavLink href="/dashboard/settings/login-log">{t("dashboardNav.loginLog", "Login Log")}</NavLink>
       <NavLink href="/dashboard/settings/homepage">{t("dashboardNav.homepageSettings", "Homepage")}</NavLink>
       <NavLink href="/dashboard/settings/nav-tabs">{t("dashboardNav.navTabs", "Sidebar tabs")}</NavLink>
       <NavLink href="/dashboard/settings/homepage-sections">

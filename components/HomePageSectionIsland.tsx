@@ -23,7 +23,7 @@ import {
 } from "@/lib/cached-public-data";
 import type { HomepageSetting } from "@/lib/types";
 import { CourseCard } from "@/components/CourseCard";
-import { HorizontalScrollRow } from "@/components/HorizontalScrollRow";
+import { SectionCarousel } from "@/components/SectionCarousel";
 import { HomeTeachersSection } from "@/components/HomeTeachersSection";
 import { HomeSubscriptionsSection } from "@/components/HomeSubscriptionsSection";
 import { HomeStoreSection } from "@/components/HomeStoreSection";
@@ -202,7 +202,7 @@ export async function HomePageSectionIsland({
         <>
           {courseSections.map((section, idx) => (
             <LazySection key={section.slug ?? `uncategorized-${idx}`} minHeight={420}>
-              <section className="bg-white dark:bg-[var(--color-background)] mx-auto max-w-6xl px-4 py-16 sm:px-6">
+              <section className="mx-auto max-w-6xl bg-[var(--color-background)] px-4 py-16 sm:px-6">
                 <div className="flex items-end justify-between gap-4">
                   <div>
                     <h2 className="text-2xl font-bold text-[var(--color-foreground)]">{section.title}</h2>
@@ -220,7 +220,16 @@ export async function HomePageSectionIsland({
                   </Link>
                 </div>
                 <div className="mt-10">
-                  <HorizontalScrollRow>
+                  <SectionCarousel
+                    intervalSeconds={6}
+                    showControls
+                    moreHref={
+                      section.slug
+                        ? `/courses?category=${encodeURIComponent(section.slug)}`
+                        : "/courses"
+                    }
+                    moreLabel={t("carousel.viewMore", "View more")}
+                  >
                     {section.courses.map((course) => (
                       <CourseCard
                         key={course.id}
@@ -243,7 +252,7 @@ export async function HomePageSectionIsland({
                         }}
                       />
                     ))}
-                  </HorizontalScrollRow>
+                  </SectionCarousel>
                 </div>
               </section>
             </LazySection>

@@ -107,6 +107,12 @@ export function PermissionsAdminClient() {
         <h3 className="font-semibold text-[var(--color-foreground)]">
           {t("dashboard.permissions.grantTitle", "Grant permissions")}
         </h3>
+        <p className="text-sm text-[var(--color-muted)]">
+          {t(
+            "dashboard.permissions.grantHint",
+            "Role mode sets a template for that role. User mode saves permissions on a specific account (any student, teacher, or admin). Prefer Manage permissions on the account page when available.",
+          )}
+        </p>
         <div className="flex flex-wrap gap-3">
           <label className="flex items-center gap-2 text-sm">
             <input type="radio" checked={mode === "role"} onChange={() => setMode("role")} />
@@ -126,15 +132,24 @@ export function PermissionsAdminClient() {
             <option value="STUDENT">STUDENT</option>
             <option value="TEACHER">TEACHER</option>
             <option value="ASSISTANT_ADMIN">ASSISTANT_ADMIN</option>
+            <option value="ADMIN">ADMIN</option>
           </select>
         ) : (
-          <input
-            value={userId}
-            onChange={(e) => setUserId(e.target.value)}
-            placeholder="user id"
-            required
-            className="w-full max-w-md rounded-[var(--radius-btn)] border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2"
-          />
+          <div className="space-y-1">
+            <input
+              value={userId}
+              onChange={(e) => setUserId(e.target.value)}
+              placeholder={t("dashboard.permissions.userIdPlaceholder", "Account user ID")}
+              required
+              className="w-full max-w-md rounded-[var(--radius-btn)] border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2"
+            />
+            <p className="text-xs text-[var(--color-muted)]">
+              {t(
+                "dashboard.permissions.userModeHint",
+                "Works for any account type. Saved as user-level permissions for that account.",
+              )}
+            </p>
+          </div>
         )}
         <div className="flex flex-wrap gap-2">
           {TEMPLATES.map((tpl) => (

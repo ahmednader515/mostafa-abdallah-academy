@@ -28,13 +28,15 @@ export default async function SearchPage({ searchParams }: Props) {
   const q = rawQ?.trim() ?? "";
 
   const typeLabels: Record<string, string> = {
-    section: t("search.typeSection", "الأقسام"),
-    course: t("search.typeCourse", "الكورسات"),
-    teacher: t("search.typeTeacher", "المدرسون"),
-    lecture: t("search.typeLecture", "المحاضرات"),
-    library: t("search.typeLibrary", "المكتبة"),
-    job: t("search.typeJob", "الوظائف"),
-    forum: t("search.typeForum", "المنتدى"),
+    section: t("search.typeSection", "Sections"),
+    course: t("search.typeCourse", "Course"),
+    teacher: t("search.typeTeacher", "Trainer"),
+    lecture: t("search.typeLecture", "Lecture"),
+    library: t("search.typeLibrary", "Library"),
+    job: t("search.typeJob", "Job"),
+    forum: t("search.typeForum", "Forum"),
+    live: t("search.typeLive", "Live Session"),
+    consultation: t("search.typeConsultation", "Consultation"),
   };
 
   let results: PlatformSearchResult[] = [];

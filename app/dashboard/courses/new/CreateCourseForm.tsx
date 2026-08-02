@@ -14,6 +14,7 @@ type LessonRow = {
   pdfUrl: string;
   attachments: LessonAttachmentRow[];
   acceptsHomework: boolean;
+  isPreview: boolean;
 };
 type QuestionOptionRow = { text: string; isCorrect: boolean };
 type QuestionRow = { type: "MULTIPLE_CHOICE" | "TRUE_FALSE"; questionText: string; options: QuestionOptionRow[] };
@@ -27,6 +28,7 @@ export function CreateCourseForm() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [categories, setCategories] = useState<CategoryOption[]>([]);
+  const [certTemplates, setCertTemplates] = useState<Array<{ id: string; name: string; nameAr: string | null }>>([]);
   const [form, setForm] = useState({
     titleAr: "",
     titleEn: "",
@@ -36,6 +38,7 @@ export function CreateCourseForm() {
     shortDescEn: "",
     imageUrl: "",
     price: "",
+    compareAtPrice: "",
     duration: "",
     level: "",
     maxQuizAttempts: "",
@@ -46,6 +49,7 @@ export function CreateCourseForm() {
     accessDurationDays: "",
     deliveryMode: "recorded" as "recorded" | "live" | "hybrid",
     isVisible: true,
+    certificateTemplateId: "",
     teacherImageUrl: "",
     teacherDescription: "",
     iconsCsv: "",
@@ -54,7 +58,7 @@ export function CreateCourseForm() {
     pricingMode: "paid" as "free" | "paid" | "subscription",
   });
   const [lessons, setLessons] = useState<LessonRow[]>([
-    { title: "", videoUrl: "", content: "", pdfUrl: "", attachments: [], acceptsHomework: false },
+    { title: "", videoUrl: "", content: "", pdfUrl: "", attachments: [], acceptsHomework: false, isPreview: false },
   ]);
 
   const loadCategories = () => {
@@ -66,6 +70,20 @@ export function CreateCourseForm() {
 
   useEffect(() => {
     loadCategories();
+    fetch("/api/dashboard/settings/certificates/templates")
+      .then((r) => r.json())
+      .then((data) => {
+        if (Array.isArray(data.templates)) {
+          setCertTemplates(
+            data.templates.map((t: { id: string; name: string; nameAr?: string | null }) => ({
+              id: t.id,
+              name: t.name,
+              nameAr: t.nameAr ?? null,
+            }))
+          );
+        }
+      })
+      .catch(() => {});
   }, []);
 
   const [deletingCategoryId, setDeletingCategoryId] = useState<string | null>(null);
@@ -99,7 +117,7 @@ export function CreateCourseForm() {
   function addLesson() {
     setLessons((l) => [
       ...l,
-      { title: "", videoUrl: "", content: "", pdfUrl: "", attachments: [], acceptsHomework: false },
+      { title: "", videoUrl: "", content: "", pdfUrl: "", attachments: [], acceptsHomework: false, isPreview: false },
     ]);
     setContentOrder((c) => [...c, { type: "lesson", index: c.filter((x) => x.type === "lesson").length }]);
   }
@@ -349,6 +367,7 @@ export function CreateCourseForm() {
           : null,
       deliveryMode: form.deliveryMode,
       isVisible: form.isVisible,
+      certificateTemplateId: form.certificateTemplateId.trim() || null,
       teacherImageUrl: form.teacherImageUrl.trim() || null,
       teacherDescription: form.teacherDescription.trim() || null,
       iconsJson: form.iconsCsv.trim()
@@ -363,6 +382,10 @@ export function CreateCourseForm() {
           : form.price
             ? parseFloat(form.price)
             : 0,
+      compareAtPrice:
+        form.pricingMode === "paid" && form.compareAtPrice.trim()
+          ? parseFloat(form.compareAtPrice)
+          : null,
       lessons: validLessons.map((l) => ({
           title: l.title.trim(),
           videoUrl: l.videoUrl.trim() || undefined,
@@ -377,6 +400,7 @@ export function CreateCourseForm() {
               fileName: a.fileName.trim() || undefined,
             })),
           acceptsHomework: l.acceptsHomework,
+          isPreview: l.isPreview,
         })),
       quizzes: validQuizzes,
       contentOrder: filteredContentOrder,
@@ -546,15 +570,26 @@ export function CreateCourseForm() {
               <option value="subscription">{t(`${Cf}.pricingSubscription`, "Subscription only")}</option>
             </select>
             {form.pricingMode === "paid" ? (
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                value={form.price}
-                onChange={(e) => setForm((f) => ({ ...f, price: e.target.value }))}
-                placeholder="0"
-                className="mt-2 w-full rounded-[var(--radius-btn)] border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2"
-              />
+              <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={form.price}
+                  onChange={(e) => setForm((f) => ({ ...f, price: e.target.value }))}
+                  placeholder="0"
+                  className="w-full rounded-[var(--radius-btn)] border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2"
+                />
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={form.compareAtPrice}
+                  onChange={(e) => setForm((f) => ({ ...f, compareAtPrice: e.target.value }))}
+                  placeholder={t(`${Cf}.compareAtPricePlaceholder`, "Compare-at price (optional)")}
+                  className="w-full rounded-[var(--radius-btn)] border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2"
+                />
+              </div>
             ) : null}
             <div className="mt-2 space-y-1 text-sm">
               <label className="flex items-center gap-2">
@@ -736,6 +771,23 @@ export function CreateCourseForm() {
             <span className="text-sm text-[var(--color-foreground)]">{t(`${Cf}.isVisibleLabel`)}</span>
           </label>
           <p className="text-xs text-[var(--color-muted)]">{t(`${Cf}.isVisibleHelp`)}</p>
+          <div>
+            <label className="block text-sm font-medium text-[var(--color-foreground)]">
+              {t(`${Cf}.certificateTemplateLabel`, "Certificate template")}
+            </label>
+            <select
+              value={form.certificateTemplateId}
+              onChange={(e) => setForm((f) => ({ ...f, certificateTemplateId: e.target.value }))}
+              className="mt-1 w-full rounded-[var(--radius-btn)] border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2"
+            >
+              <option value="">{t(`${Cf}.certificateTemplateDefault`, "Default template")}</option>
+              {certTemplates.map((tpl) => (
+                <option key={tpl.id} value={tpl.id}>
+                  {tpl.nameAr || tpl.name}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
       </section>
 
@@ -885,6 +937,15 @@ export function CreateCourseForm() {
                   className="rounded border-[var(--color-border)]"
                 />
                 <span className="text-sm text-[var(--color-foreground)]">{t(`${Cf}.homeworkCheckbox`)}</span>
+              </label>
+              <label className="flex items-center gap-2 pt-2">
+                <input
+                  type="checkbox"
+                  checked={lesson.isPreview}
+                  onChange={(e) => updateLesson(i, "isPreview", e.target.checked)}
+                  className="rounded border-[var(--color-border)]"
+                />
+                <span className="text-sm text-[var(--color-foreground)]">{t(`${Cf}.freePreviewCheckbox`, "Free preview (watch without enrollment)")}</span>
               </label>
             </div>
           </div>

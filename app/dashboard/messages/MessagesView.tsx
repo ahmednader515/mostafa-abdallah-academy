@@ -12,6 +12,7 @@ type ConversationItem = {
   staffName?: string;
   staffRole?: string;
   updatedAt?: string;
+  unreadCount?: number;
 };
 
 type StaffItem = { id: string; role: string };
@@ -33,10 +34,12 @@ export function MessagesView({
   isStaff,
   userId,
   userName,
+  initialConversationId = null,
 }: {
   isStaff: boolean;
   userId: string;
   userName: string;
+  initialConversationId?: string | null;
 }) {
   const t = useT();
   const locale = useLocale();
@@ -48,7 +51,9 @@ export function MessagesView({
   }
   const [conversations, setConversations] = useState<ConversationItem[]>([]);
   const [students, setStudents] = useState<StudentItem[]>([]);
-  const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
+  const [selectedConversationId, setSelectedConversationId] = useState<string | null>(
+    initialConversationId,
+  );
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
   const [messages, setMessages] = useState<MessageItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -97,7 +102,16 @@ export function MessagesView({
     setMessagesLoading(true);
     fetch(`/api/messages/conversations/${selectedConversationId}`)
       .then((r) => r.json())
-      .then((data) => setMessages(Array.isArray(data.messages) ? data.messages : []))
+      .then((data) => {
+        setMessages(Array.isArray(data.messages) ? data.messages : []);
+        // Clear unread dot for this chat locally after server marks it read.
+        setConversations((prev) =>
+          prev.map((c) => (c.id === selectedConversationId ? { ...c, unreadCount: 0 } : c)),
+        );
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new Event("worldway:messages-read"));
+        }
+      })
       .catch(() => setMessages([]))
       .finally(() => setMessagesLoading(false));
   }, [selectedConversationId]);
@@ -263,18 +277,36 @@ export function MessagesView({
               className="mb-3 w-full rounded-[var(--radius-btn)] border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2 text-sm placeholder:text-[var(--color-muted)]"
             />
             <ul className="max-h-[420px] space-y-1 overflow-y-auto">
-              {filteredStudents.map((s) => (
-                <li key={s.id}>
-                  <button
-                    type="button"
-                    onClick={() => openChatWithStudent(s.id)}
-                    disabled={sending}
-                    className={`w-full rounded-[var(--radius-btn)] px-3 py-2 text-right text-sm ${selectedStudentId === s.id || conversations.find((c) => c.id === selectedConversationId)?.studentUserId === s.id ? "bg-[var(--color-primary)]/20 text-[var(--color-primary)]" : "hover:bg-[var(--color-background)]"}`}
-                  >
-                    {s.name || s.email}
-                  </button>
-                </li>
-              ))}
+              {filteredStudents.map((s) => {
+                const conv = conversations.find((c) => c.studentUserId === s.id);
+                const hasUnread = Number(conv?.unreadCount ?? 0) > 0;
+                const isSelected =
+                  selectedStudentId === s.id ||
+                  conversations.find((c) => c.id === selectedConversationId)?.studentUserId === s.id;
+                return (
+                  <li key={s.id}>
+                    <button
+                      type="button"
+                      onClick={() => openChatWithStudent(s.id)}
+                      disabled={sending}
+                      className={`flex w-full items-center justify-between gap-2 rounded-[var(--radius-btn)] px-3 py-2 text-sm ${
+                        isSelected
+                          ? "bg-[var(--color-primary)]/20 text-[var(--color-primary)]"
+                          : "hover:bg-[var(--color-background)]"
+                      }`}
+                    >
+                      <span className="min-w-0 truncate text-start">{s.name || s.email}</span>
+                      {hasUnread ? (
+                        <span
+                          className="h-2.5 w-2.5 shrink-0 rounded-full bg-[#2563EB]"
+                          title={t(`${V}.unreadDot`, "Unread messages")}
+                          aria-label={t(`${V}.unreadDot`, "Unread messages")}
+                        />
+                      ) : null}
+                    </button>
+                  </li>
+                );
+              })}
               {students.length === 0 && !loading && <p className="text-sm text-[var(--color-muted)]">{t(`${V}.noStudents`)}</p>}
               {students.length > 0 && filteredStudents.length === 0 && <p className="text-sm text-[var(--color-muted)]">{t(`${V}.noSearchResultsStaff`)}</p>}
             </ul>
@@ -289,15 +321,27 @@ export function MessagesView({
                 {staffList.map((s) => {
                   const conv = conversations.find((c) => c.staffUserId === s.id);
                   const label = roleLabel(s.role);
+                  const hasUnread = Number(conv?.unreadCount ?? 0) > 0;
                   return (
                     <li key={s.id}>
                       <button
                         type="button"
                         onClick={() => (conv ? selectConversation(conv.id) : openChatWithStaff(s.id))}
                         disabled={sending}
-                        className={`w-full rounded-[var(--radius-btn)] px-3 py-2 text-right text-sm ${selectedConversationId === conv?.id ? "bg-[var(--color-primary)]/20 text-[var(--color-primary)]" : "hover:bg-[var(--color-background)]"}`}
+                        className={`flex w-full items-center justify-between gap-2 rounded-[var(--radius-btn)] px-3 py-2 text-sm ${
+                          selectedConversationId === conv?.id
+                            ? "bg-[var(--color-primary)]/20 text-[var(--color-primary)]"
+                            : "hover:bg-[var(--color-background)]"
+                        }`}
                       >
-                        {label}
+                        <span className="min-w-0 truncate text-start">{label}</span>
+                        {hasUnread ? (
+                          <span
+                            className="h-2.5 w-2.5 shrink-0 rounded-full bg-[#2563EB]"
+                            title={t(`${V}.unreadDot`, "Unread messages")}
+                            aria-label={t(`${V}.unreadDot`, "Unread messages")}
+                          />
+                        ) : null}
                       </button>
                     </li>
                   );

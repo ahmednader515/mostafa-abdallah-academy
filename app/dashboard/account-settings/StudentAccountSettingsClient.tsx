@@ -1,9 +1,9 @@
 "use client";
 
-import { signOut } from "next-auth/react";
 import Link from "next/link";
 import { LanguageToggle } from "@/components/LanguageToggle";
 import { useT } from "@/components/LocaleProvider";
+import { signOutFully } from "@/lib/client-sign-out";
 
 export function StudentAccountSettingsClient({
   devices,
@@ -57,7 +57,7 @@ export function StudentAccountSettingsClient({
         </Link>
         <button
           type="button"
-          onClick={() => void signOut({ callbackUrl: "/" })}
+          onClick={() => void signOutFully({ callbackUrl: "/", reason: "manual" })}
           className="rounded bg-red-600 px-4 py-2 text-sm font-semibold text-white"
         >
           {t("studentDash.logout", "Log out")}

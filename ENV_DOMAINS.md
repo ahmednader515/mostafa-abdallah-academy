@@ -1,21 +1,33 @@
 # Domain environment variables
 
-- `NEXT_PUBLIC_PRIMARY_DOMAIN`: the canonical public domain, with or without `https://`. It is used for sitemap URLs, robots metadata, and canonical URLs.
-- `NEXT_PUBLIC_SECONDARY_DOMAIN`: an optional alternate domain for redirects or deployment configuration. It must not be used to generate canonical URLs.
+Canonical public domain for sitemap, robots, Open Graph, and absolute URLs:
 
-If `NEXT_PUBLIC_PRIMARY_DOMAIN` is absent, development metadata uses `http://localhost:3000`.
-# Dual-domain SEO setup for WorldWay
+```env
+# Preferred (any of these; first valid wins)
+SITE_URL=https://www.worldway.net
+NEXT_PUBLIC_SITE_URL=https://www.worldway.net
+NEXT_PUBLIC_PRIMARY_DOMAIN=https://www.worldway.net
 
-# Primary (canonical) domain — used by sitemap, robots, and Open Graph
-NEXT_PUBLIC_PRIMARY_DOMAIN=https://www.example.com
+# Auth should match the primary domain in production
+NEXTAUTH_URL=https://www.worldway.net
+```
 
-# Secondary (alias / paid) domain — point both domains at the same Vercel project
+Optional secondary alias (redirects only — never used for canonical URLs):
+
+```env
 NEXT_PUBLIC_SECONDARY_DOMAIN=https://paid.example.com
+```
 
-# Auth / absolute URLs should use the primary domain
-NEXTAUTH_URL=https://www.example.com
+## Rules
 
-# In Vercel:
-# 1. Add both domains to the project
-# 2. Set the env vars above
-# 3. Prefer the primary domain for canonical metadata (layout uses PRIMARY)
+- Use a full origin with a real hostname that includes a TLD (e.g. `www.worldway.net`).
+- Values like `mostafa-abdullah-academy` (no TLD) or the R2 bucket name are **rejected**.
+- In production / on Vercel, if no valid env is set, the app falls back to `https://www.worldway.net`.
+- `robots.txt` always advertises `https://www.worldway.net/sitemap.xml`.
+
+## Vercel checklist
+
+1. Project → Settings → Domains: add `www.worldway.net` (and apex if needed).
+2. Environment Variables (Production): set `NEXT_PUBLIC_PRIMARY_DOMAIN=https://www.worldway.net` and `NEXTAUTH_URL=https://www.worldway.net`.
+3. Redeploy so sitemap/robots regenerate.
+4. In Google Search Console, submit `https://www.worldway.net/sitemap.xml` for the www property.

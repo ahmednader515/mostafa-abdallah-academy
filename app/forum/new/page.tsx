@@ -2,7 +2,10 @@ import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { authOptions } from "@/lib/auth";
-import { listForumCategories } from "@/lib/forum-db";
+import {
+  getDefaultForumCategory,
+  listForumCategoriesForUser,
+} from "@/lib/forum-db";
 import { getLocaleFromCookie, getServerTranslator } from "@/lib/i18n/server";
 import { NewThreadForm } from "./NewThreadForm";
 
@@ -11,7 +14,14 @@ export default async function NewForumThreadPage() {
   if (!session) redirect("/login?callbackUrl=/forum/new");
 
   const [t, locale] = await Promise.all([getServerTranslator(), getLocaleFromCookie()]);
-  const categories = await listForumCategories(true).catch(() => []);
+  const categories = await listForumCategoriesForUser(session.user.role, true, {
+    forCreate: true,
+  }).catch(() => []);
+  const defaultCat = await getDefaultForumCategory().catch(() => null);
+  const defaultId =
+    (defaultCat && categories.some((c) => c.id === defaultCat.id) ? defaultCat.id : null) ||
+    categories[0]?.id ||
+    "";
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-10 sm:px-6">
@@ -25,9 +35,11 @@ export default async function NewForumThreadPage() {
         {t("forum.newThreadHint", "Choose a category and write a clear title so others can help.")}
       </p>
       <NewThreadForm
+        defaultCategoryId={defaultId}
         categories={categories.map((c) => ({
           id: c.id,
           name: locale === "en" ? c.name : c.nameAr?.trim() || c.name,
+          isLocked: c.isLocked,
         }))}
       />
     </div>

@@ -93,7 +93,7 @@ export default async function CertificatesPage() {
                     </dl>
                     <div className="mt-4 flex flex-wrap gap-2">
                       <Link
-                        href={`/certificates/${encodeURIComponent(cert.id)}`}
+                        href={`/certificate/${encodeURIComponent(cert.certificateId)}`}
                         className="rounded-[var(--radius-btn)] bg-[var(--color-primary)] px-4 py-2 text-sm font-semibold text-white hover:bg-[var(--color-primary-hover)]"
                       >
                         {t(`${C}.viewAndPrint`)}

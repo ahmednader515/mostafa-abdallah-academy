@@ -2,15 +2,20 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { deleteStoreProduct, updateStoreProduct } from "@/lib/db";
+import { permissionDeniedResponse } from "@/lib/require-permission";
 
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const session = await getServerSession(authOptions);
-  if (!session || session.user.role !== "ADMIN") {
-    return NextResponse.json({ error: "غير مصرح" }, { status: 403 });
-  }
+  if (!session?.user?.id) return NextResponse.json({ error: "غير مصرح" }, { status: 403 });
+  const denied = await permissionDeniedResponse(
+    session.user.id,
+    session.user.role,
+    "canManageLibrary",
+  );
+  if (denied) return denied;
   const { id } = await params;
   let body: {
     title?: string;
@@ -62,9 +67,13 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const session = await getServerSession(authOptions);
-  if (!session || session.user.role !== "ADMIN") {
-    return NextResponse.json({ error: "غير مصرح" }, { status: 403 });
-  }
+  if (!session?.user?.id) return NextResponse.json({ error: "غير مصرح" }, { status: 403 });
+  const denied = await permissionDeniedResponse(
+    session.user.id,
+    session.user.role,
+    "canManageLibrary",
+  );
+  if (denied) return denied;
   const { id } = await params;
   try {
     await deleteStoreProduct(id);

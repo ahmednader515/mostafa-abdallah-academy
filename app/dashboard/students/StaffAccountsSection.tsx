@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { ManageUserPermissionsModal } from "@/components/ManageUserPermissionsModal";
 import { useT } from "@/components/LocaleProvider";
 import { useDashboardTable } from "@/lib/i18n/dashboard-table";
 
@@ -37,6 +38,7 @@ export function StaffAccountsSection({
   const [editPassword, setEditPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [permsUser, setPermsUser] = useState<UserRow | null>(null);
 
   const staff = [
     ...admins.map((u) => ({ ...u, roleLabel: translateRole(u.role, t) })),
@@ -105,13 +107,22 @@ export function StaffAccountsSection({
                 <td className="py-2 px-3 text-[var(--color-muted)]">{u.email ?? dash}</td>
                 <td className="py-2 px-3 text-[var(--color-foreground)]">{u.roleLabel}</td>
                 <td className="py-2 px-3">
-                  <button
-                    type="button"
-                    onClick={() => openEdit(u)}
-                    className="text-sm font-medium text-[var(--color-primary)] hover:underline"
-                  >
-                    {t("dashboard.studentsPage.edit", "Edit")}
-                  </button>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => openEdit(u)}
+                      className="text-sm font-medium text-[var(--color-primary)] hover:underline"
+                    >
+                      {t("dashboard.studentsPage.edit", "Edit")}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPermsUser(u)}
+                      className="text-sm font-medium text-[var(--color-primary)] hover:underline"
+                    >
+                      {t("dashboard.permissions.manageTitle", "Manage permissions")}
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
@@ -188,6 +199,13 @@ export function StaffAccountsSection({
                   autoComplete="new-password"
                 />
               </div>
+              <button
+                type="button"
+                onClick={() => setPermsUser(editUser)}
+                className="w-full rounded-[var(--radius-btn)] border border-[var(--color-border)] py-2 text-sm font-medium text-[var(--color-primary)]"
+              >
+                {t("dashboard.permissions.manageTitle", "Manage permissions")}
+              </button>
               <div className="flex gap-2 pt-2">
                 <button
                   type="button"
@@ -213,6 +231,17 @@ export function StaffAccountsSection({
           </div>
         </div>
       )}
+
+      {permsUser ? (
+        <ManageUserPermissionsModal
+          open
+          userId={permsUser.id}
+          userName={permsUser.name || permsUser.email || permsUser.id}
+          userRole={permsUser.role}
+          onClose={() => setPermsUser(null)}
+          onSaved={() => router.refresh()}
+        />
+      ) : null}
     </section>
   );
 }

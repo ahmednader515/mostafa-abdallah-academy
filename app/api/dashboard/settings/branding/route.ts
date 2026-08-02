@@ -23,6 +23,12 @@ async function ensureSeoColumns() {
   await sql`ALTER TABLE "HomepageSetting" ADD COLUMN IF NOT EXISTS meta_capi_access_token TEXT`.catch(
     () => undefined,
   );
+  await sql`ALTER TABLE "HomepageSetting" ADD COLUMN IF NOT EXISTS auth_login_body TEXT`.catch(
+    () => undefined,
+  );
+  await sql`ALTER TABLE "HomepageSetting" ADD COLUMN IF NOT EXISTS auth_login_body_en TEXT`.catch(
+    () => undefined,
+  );
 }
 
 export async function GET() {
@@ -49,6 +55,8 @@ export async function GET() {
       seoTitleEn: homepage.pageTitleEn ?? null,
       seoDescription: homepage.seoDescription ?? null,
       seoDescriptionEn: homepage.seoDescriptionEn ?? null,
+      authLoginBody: homepage.authLoginBody ?? null,
+      authLoginBodyEn: homepage.authLoginBodyEn ?? null,
     });
   } catch {
     return NextResponse.json({ error: "فشل جلب إعدادات الهوية البصرية" }, { status: 500 });
@@ -83,6 +91,8 @@ export async function PUT(request: NextRequest) {
     seoTitleEn?: string | null;
     seoDescription?: string | null;
     seoDescriptionEn?: string | null;
+    authLoginBody?: string | null;
+    authLoginBodyEn?: string | null;
   };
   try {
     body = await request.json();
@@ -142,6 +152,20 @@ export async function PUT(request: NextRequest) {
       await sql`
         UPDATE "HomepageSetting"
         SET default_currency = ${body.defaultCurrency}, updated_at = NOW()
+        WHERE id = 'default'
+      `;
+    }
+    if (body.authLoginBody !== undefined) {
+      await sql`
+        UPDATE "HomepageSetting"
+        SET auth_login_body = ${body.authLoginBody}, updated_at = NOW()
+        WHERE id = 'default'
+      `;
+    }
+    if (body.authLoginBodyEn !== undefined) {
+      await sql`
+        UPDATE "HomepageSetting"
+        SET auth_login_body_en = ${body.authLoginBodyEn}, updated_at = NOW()
         WHERE id = 'default'
       `;
     }

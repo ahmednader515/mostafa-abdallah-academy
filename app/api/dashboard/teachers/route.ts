@@ -27,6 +27,8 @@ export async function GET() {
         teacher_bio: (u as { teacher_bio?: string | null }).teacher_bio ?? null,
         teacher_homepage_order:
           (u as { teacher_homepage_order?: number | null }).teacher_homepage_order ?? null,
+        teacher_visible_on_homepage:
+          (u as { teacher_visible_on_homepage?: boolean | null }).teacher_visible_on_homepage !== false,
         permissions,
       };
     }),

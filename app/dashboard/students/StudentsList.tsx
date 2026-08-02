@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AddBalanceButton } from "./AddBalanceButton";
 import { DisplayPhoneNumber } from "@/components/DisplayPhoneNumber";
+import { ManageUserPermissionsModal } from "@/components/ManageUserPermissionsModal";
 import { useT } from "@/components/LocaleProvider";
 import { formatPhoneForDisplay } from "@/lib/phone/format-display";
 import { useDashboardTable } from "@/lib/i18n/dashboard-table";
@@ -60,12 +61,12 @@ export function StudentsList({
   canManageEnrollments?: boolean;
   canEditFullProfile?: boolean;
 }) {
-  void isAdmin;
   const t = useT();
   const { dir, thClass } = useDashboardTable();
   const router = useRouter();
   const [search, setSearch] = useState("");
   const [editStudent, setEditStudent] = useState<Student | null>(null);
+  const [permsUser, setPermsUser] = useState<Student | null>(null);
   const [editName, setEditName] = useState("");
   const [editEmail, setEditEmail] = useState("");
   const [editRole, setEditRole] = useState("");
@@ -329,6 +330,15 @@ export function StudentsList({
                     >
                       {t("dashboard.studentsPage.edit", "Edit")}
                     </button>
+                    {isAdmin ? (
+                      <button
+                        type="button"
+                        onClick={() => setPermsUser(s)}
+                        className="text-sm font-medium text-[var(--color-primary)] hover:underline"
+                      >
+                        {t("dashboard.permissions.manageTitle", "Manage permissions")}
+                      </button>
+                    ) : null}
                     <button
                       type="button"
                       disabled={loading}
@@ -542,6 +552,15 @@ export function StudentsList({
                   </div>
                 </>
               )}
+              {isAdmin ? (
+                <button
+                  type="button"
+                  onClick={() => setPermsUser(editStudent)}
+                  className="w-full rounded-[var(--radius-btn)] border border-[var(--color-border)] py-2 text-sm font-medium text-[var(--color-primary)]"
+                >
+                  {t("dashboard.permissions.manageTitle", "Manage permissions")}
+                </button>
+              ) : null}
               <div className="flex gap-2 pt-2">
                 <button
                   type="button"
@@ -567,6 +586,17 @@ export function StudentsList({
           </div>
         </div>
       )}
+
+      {permsUser ? (
+        <ManageUserPermissionsModal
+          open
+          userId={permsUser.id}
+          userName={permsUser.name || permsUser.email}
+          userRole={permsUser.role || "STUDENT"}
+          onClose={() => setPermsUser(null)}
+          onSaved={() => router.refresh()}
+        />
+      ) : null}
     </div>
   );
 }

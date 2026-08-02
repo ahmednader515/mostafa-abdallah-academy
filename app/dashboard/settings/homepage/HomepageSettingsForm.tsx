@@ -22,15 +22,18 @@ import type { AcademyHeroSlide, AcademyHeroSlideFeature } from "@/lib/academy-ho
 import {
   HERO_FEATURE_KINDS,
   HOMEPAGE_MAIN_NAV_ICONS,
+  HOMEPAGE_STAT_ICONS,
   emptyHeroSlide,
   parseHeroSlidesJson,
   parseMainNavFlagsJson,
   parseStatsRibbonJson,
   type HomepageMainNavFlags,
   type HomepageMainNavIcon,
+  type HomepageStatIcon,
   type HomepageStatItem,
 } from "@/lib/homepage-hero-stats";
 import { HomeMainNavIcon } from "@/components/HomeMainNavIcon";
+import { HomeStatIcon } from "@/components/HomeStatIcon";
 
 type PublishedCourseOption = {
   id: string;
@@ -760,6 +763,27 @@ export function HomepageSettingsForm({
               className="rounded-[var(--radius-btn)] border border-[var(--color-border)] bg-[var(--color-background)] p-3"
             >
               <p className="mb-2 text-xs font-semibold text-[var(--color-primary)]">{statKindLabel(stat.kind)}</p>
+              <div className="mb-2 flex items-center gap-3">
+                <span className="inline-flex h-9 w-9 items-center justify-center rounded border border-[var(--color-border)] text-[var(--color-primary)]">
+                  <HomeStatIcon icon={stat.icon} className="h-5 w-5" />
+                </span>
+                <label className="flex-1 text-xs text-[var(--color-muted)]">
+                  {fh("statIconLabel")}
+                  <select
+                    value={stat.icon}
+                    onChange={(e) =>
+                      updateStatItem(idx, { icon: e.target.value as HomepageStatIcon })
+                    }
+                    className="mt-1 w-full rounded-[var(--radius-btn)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-foreground)]"
+                  >
+                    {HOMEPAGE_STAT_ICONS.map((icon) => (
+                      <option key={icon} value={icon}>
+                        {fh(`statIcon_${icon}`)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
               <label className="block text-xs font-medium text-[var(--color-muted)]">{fh("statValueLabel")}</label>
               <input
                 type="text"

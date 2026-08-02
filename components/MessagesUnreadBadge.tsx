@@ -1,36 +1,57 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
+import { usePathname } from "next/navigation";
+
+export const MESSAGES_READ_EVENT = "worldway:messages-read";
 
 /** Unread message count badge for the envelope icon. */
 export function MessagesUnreadBadge() {
   const { status } = useSession();
+  const pathname = usePathname();
   const [count, setCount] = useState(0);
+
+  const load = useCallback(async () => {
+    if (status !== "authenticated") {
+      setCount(0);
+      return;
+    }
+    try {
+      const res = await fetch("/api/messages/unread-count", { credentials: "include" });
+      if (!res.ok) return;
+      const data = await res.json();
+      setCount(Number(data.count) || 0);
+    } catch {
+      /* ignore */
+    }
+  }, [status]);
 
   useEffect(() => {
     if (status !== "authenticated") {
       setCount(0);
       return;
     }
-    let cancelled = false;
-    async function load() {
-      try {
-        const res = await fetch("/api/messages/unread-count", { credentials: "include" });
-        if (!res.ok) return;
-        const data = await res.json();
-        if (!cancelled) setCount(Number(data.count) || 0);
-      } catch {
-        /* ignore */
-      }
-    }
-    load();
-    const id = setInterval(load, 30000);
+    void load();
+    const id = setInterval(() => void load(), 15000);
+    const onRead = () => void load();
+    const onFocus = () => void load();
+    window.addEventListener(MESSAGES_READ_EVENT, onRead);
+    window.addEventListener("focus", onFocus);
     return () => {
-      cancelled = true;
       clearInterval(id);
+      window.removeEventListener(MESSAGES_READ_EVENT, onRead);
+      window.removeEventListener("focus", onFocus);
     };
-  }, [status]);
+  }, [status, load]);
+
+  // Refresh when navigating to/from the messages page.
+  useEffect(() => {
+    if (status !== "authenticated") return;
+    if (pathname?.startsWith("/dashboard/messages")) {
+      void load();
+    }
+  }, [pathname, status, load]);
 
   if (count <= 0) return null;
   return (

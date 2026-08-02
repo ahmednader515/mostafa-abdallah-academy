@@ -35,7 +35,14 @@ type Course = {
   category?: { name: string; nameAr?: string | null } | null;
 };
 
-export function CourseCard({ course }: { course: Course }) {
+export function CourseCard({
+  course,
+  layout = "carousel",
+}: {
+  course: Course;
+  /** carousel = شريط أفقي (الرئيسية)، grid = شبكة صفحة الكورسات */
+  layout?: "carousel" | "grid";
+}) {
   const locale = useLocale();
   const t = useT();
   const displayTitle = locale === "en" ? (course.title || course.titleAr) : (course.titleAr || course.title);
@@ -57,9 +64,13 @@ export function CourseCard({ course }: { course: Course }) {
     courseRatingCountValue > 0;
   const isPaid = priceValue !== null && priceValue > 0;
   const lessonsCount = course.lessonsCount != null ? Number(course.lessonsCount) : null;
+  const shellClass =
+    layout === "grid"
+      ? "flex h-full w-full flex-col overflow-hidden rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-[var(--shadow-card)] transition hover:border-[var(--color-primary)]/30 hover:shadow-[var(--shadow-hover)]"
+      : "flex w-[min(86vw,18rem)] shrink-0 flex-col overflow-hidden rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-[var(--shadow-card)] transition hover:border-[var(--color-primary)]/30 hover:shadow-[var(--shadow-hover)] sm:w-72";
 
   return (
-    <article className="flex w-[min(86vw,18rem)] shrink-0 flex-col overflow-hidden rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-[var(--shadow-card)] transition hover:border-[var(--color-primary)]/30 hover:shadow-[var(--shadow-hover)] sm:w-72">
+    <article className={shellClass}>
       <Link href={href} className="group block">
         <div className="relative aspect-video w-full bg-gradient-to-br from-[var(--color-primary)]/20 to-[var(--color-primary-light)]/30 flex items-center justify-center">
           {course.imageUrl ? (
@@ -67,7 +78,11 @@ export function CourseCard({ course }: { course: Course }) {
               src={course.imageUrl}
               alt=""
               fill
-              sizes="(max-width: 640px) 86vw, 288px"
+              sizes={
+                layout === "grid"
+                  ? "(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+                  : "(max-width: 640px) 86vw, 288px"
+              }
               className="object-cover"
               quality={70}
             />

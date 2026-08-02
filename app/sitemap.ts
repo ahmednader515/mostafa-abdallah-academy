@@ -1,23 +1,33 @@
 import type { MetadataRoute } from "next";
-import { getCoursesPublished, getHomepageSettings, listPublishedJobs, listStoreProductsPublic } from "@/lib/db";
+import {
+  getCategories,
+  getCoursesPublished,
+  getHomepageSettings,
+  listActiveSubscriptionPlansPublic,
+  listJobCategories,
+  listLibraryCategoriesAll,
+  listPublishedJobs,
+  listStoreProductsPublic,
+} from "@/lib/db";
 import { listForumThreads } from "@/lib/forum-db";
 import { listPublishedLandingPagesForSitemap } from "@/lib/landing-pages-db";
 import { listPublishedConsultations, listPublishedExternalTrainings } from "@/lib/lms-features-db";
-import { parsePolicyCards } from "@/lib/policy-cards";
+import { getHomepageLiveStreams } from "@/lib/lms-spec-db";
+import {
+  listPublishedPolicyCards,
+  parsePolicyCards,
+  policyPublicHref,
+} from "@/lib/policy-cards";
+import { DEFAULT_PRODUCTION_SITE_ORIGIN, getSiteOrigin } from "@/lib/site-url";
 
 /** Rebuild at most every hour so new published content appears without redeploy. */
 export const revalidate = 3600;
 
-function siteOrigin(): string {
-  const primary = process.env.NEXT_PUBLIC_PRIMARY_DOMAIN?.trim();
-  if (primary) {
-    return primary.startsWith("http")
-      ? primary.replace(/\/$/, "")
-      : `https://${primary.replace(/\/$/, "")}`;
-  }
-  const auth = process.env.NEXTAUTH_URL?.trim();
-  if (auth) return auth.replace(/\/$/, "");
-  return "http://localhost:3000";
+/** Sitemap must match the Google Search Console property (www.worldway.net). */
+function sitemapBaseOrigin(): string {
+  const origin = getSiteOrigin();
+  if (origin.includes("localhost")) return origin;
+  return DEFAULT_PRODUCTION_SITE_ORIGIN;
 }
 
 function asDate(value: unknown): Date {
@@ -56,7 +66,7 @@ async function safe<T>(fn: () => Promise<T>, fallback: T): Promise<T> {
 }
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const base = siteOrigin();
+  const base = sitemapBaseOrigin();
   const now = new Date();
 
   const staticPaths: Array<{
@@ -69,7 +79,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { path: "/teachers", changeFrequency: "weekly", priority: 0.8 },
     { path: "/library", changeFrequency: "daily", priority: 0.8 },
     { path: "/jobs", changeFrequency: "daily", priority: 0.8 },
-    { path: "/forum", changeFrequency: "daily", priority: 0.8 },
+    { path: "/forum", changeFrequency: "daily", priority: 0.9 },
+    { path: "/subscriptions", changeFrequency: "weekly", priority: 0.85 },
     { path: "/exams", changeFrequency: "weekly", priority: 0.7 },
     { path: "/certificates", changeFrequency: "weekly", priority: 0.6 },
     { path: "/consultations", changeFrequency: "weekly", priority: 0.7 },
@@ -88,23 +99,45 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   const [
     courses,
+    courseCategories,
     jobs,
+    jobCategories,
     libraryProducts,
+    libraryCategories,
     forumThreads,
     consultations,
     externalTrainings,
     landingPages,
     homepage,
+    subscriptionPlans,
+    liveStreams,
   ] = await Promise.all([
     safe(() => getCoursesPublished(false), []),
+    safe(() => getCategories(), []),
     safe(() => listPublishedJobs(), []),
+    safe(() => listJobCategories(), []),
     safe(() => listStoreProductsPublic(), []),
+    safe(() => listLibraryCategoriesAll(), []),
     safe(() => listForumThreads(null, 5000), []),
     safe(() => listPublishedConsultations(), []),
     safe(() => listPublishedExternalTrainings(), []),
     safe(() => listPublishedLandingPagesForSitemap(), []),
     safe(() => getHomepageSettings(), null),
+    safe(() => listActiveSubscriptionPlansPublic(), []),
+    safe(() => getHomepageLiveStreams(), []),
   ]);
+
+  for (const cat of courseCategories) {
+    const slug = String(cat.slug || "").trim();
+    if (!slug) continue;
+    entries.push(
+      entry(base, `/courses/category/${encodeURIComponent(slug)}`, {
+        lastModified: now,
+        changeFrequency: "weekly",
+        priority: 0.75,
+      }),
+    );
+  }
 
   for (const course of courses) {
     const slug = String(course.slug || course.id || "").trim();
@@ -124,6 +157,18 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     );
   }
 
+  for (const cat of jobCategories) {
+    const slug = String(cat.slug || "").trim();
+    if (!slug) continue;
+    entries.push(
+      entry(base, `/jobs/category/${encodeURIComponent(slug)}`, {
+        lastModified: now,
+        changeFrequency: "weekly",
+        priority: 0.7,
+      }),
+    );
+  }
+
   for (const job of jobs) {
     const id = String(job.id || "").trim();
     if (!id) continue;
@@ -136,7 +181,19 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     );
   }
 
-  // Library detail pages exist only for articles (see app/library/[id]/page.tsx).
+  for (const cat of libraryCategories) {
+    const slug = String(cat.slug || "").trim();
+    if (!slug) continue;
+    entries.push(
+      entry(base, `/library/category/${encodeURIComponent(slug)}`, {
+        lastModified: now,
+        changeFrequency: "weekly",
+        priority: 0.7,
+      }),
+    );
+  }
+
+  // Library detail pages exist for articles (see app/library/[id]/page.tsx).
   for (const product of libraryProducts) {
     if (product.contentType !== "article") continue;
     const id = String(product.id || "").trim();
@@ -150,6 +207,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     );
   }
 
+  // Forum hub (/forum) + every thread detail page.
   for (const thread of forumThreads) {
     const id = String(thread.id || "").trim();
     if (!id) continue;
@@ -186,6 +244,31 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     );
   }
 
+  for (const plan of subscriptionPlans) {
+    const id = String(plan.id || "").trim();
+    if (!id) continue;
+    entries.push(
+      entry(base, `/subscriptions/${encodeURIComponent(id)}`, {
+        lastModified: now,
+        changeFrequency: "weekly",
+        priority: 0.75,
+      }),
+    );
+  }
+
+  for (const stream of liveStreams) {
+    const raw = stream as Record<string, unknown>;
+    const id = String(raw.id ?? "").trim();
+    if (!id) continue;
+    entries.push(
+      entry(base, `/live/${encodeURIComponent(id)}`, {
+        lastModified: asDate(raw.updatedAt ?? raw.updated_at ?? raw.createdAt ?? raw.created_at),
+        changeFrequency: "daily",
+        priority: 0.6,
+      }),
+    );
+  }
+
   for (const page of landingPages) {
     const slug = String(page.slug || "").trim();
     if (!slug) continue;
@@ -198,12 +281,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     );
   }
 
-  const policyCards = parsePolicyCards(homepage?.policyCardsJson ?? null).filter((c) => c.isVisible);
-  const policySlugs = new Set(policyCards.map((c) => c.slug.trim()).filter(Boolean));
-  for (const fallback of ["privacy", "terms", "usage"]) policySlugs.add(fallback);
-  for (const slug of policySlugs) {
+  const policyCards = listPublishedPolicyCards(
+    parsePolicyCards(homepage?.policyCardsJson ?? null),
+  );
+  for (const card of policyCards) {
     entries.push(
-      entry(base, `/policies/${encodeURIComponent(slug)}`, {
+      entry(base, policyPublicHref(card), {
         lastModified: now,
         changeFrequency: "monthly",
         priority: 0.5,
@@ -211,7 +294,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     );
   }
 
-  // Deduplicate by URL (policies may overlap with static list if we ever add them there).
+  // Deduplicate by URL.
   const seen = new Set<string>();
   return entries.filter((e) => {
     if (seen.has(e.url)) return false;

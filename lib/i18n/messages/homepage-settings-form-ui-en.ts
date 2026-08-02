@@ -39,7 +39,8 @@ export const homepageSettingsFormUiEn = {
 
   statsRibbonTitle: "Stats ribbon (right below the hero)",
   statsRibbonIntro:
-    "Four stat cards shown below the hero slides. Each icon is fixed; you can edit the value and label text in Arabic and English.",
+    "Four stat cards shown below the hero slides. You can change the icon, value, and Arabic/English labels for each card.",
+  statIconLabel: "Icon",
   statValueLabel: "Value (e.g. 15,000+)",
   statLabelArLabel: "Label (Arabic)",
   statLabelEnLabel: "Label (English)",
@@ -47,6 +48,17 @@ export const homepageSettingsFormUiEn = {
   statKindCourses: "Courses",
   statKindTrainers: "Trainers",
   statKindSatisfaction: "Satisfaction",
+  statIcon_users: "People / trainees",
+  statIcon_graduation: "Graduation cap (course)",
+  statIcon_bookOpen: "Open book",
+  statIcon_teacher: "Instructor",
+  statIcon_chalkboard: "Chalkboard",
+  statIcon_award: "Award / achievement",
+  statIcon_bulb: "Lightbulb",
+  statIcon_play: "Play / video",
+  statIcon_monitor: "Monitor",
+  statIcon_certificate: "Certificate",
+  statIcon_target: "Target",
 
   mainNavTitle: "Quick navigation buttons (below the stats ribbon)",
   mainNavIntro: "Choose which quick navigation buttons appear on the homepage, and pick an icon for each.",

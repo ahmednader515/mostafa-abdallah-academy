@@ -40,14 +40,35 @@ export function StudentNotificationsClient() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    void fetch("/api/notifications", { credentials: "include" })
-      .then(async (r) => {
-        const d = await r.json().catch(() => ({}));
-        if (!r.ok) throw new Error(d.error || "Failed");
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch("/api/notifications", { credentials: "include" });
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(d.error || "Failed");
         const list = (d.notifications ?? d.items ?? []) as Record<string, unknown>[];
-        setItems(list.map(normalizeNotif).filter((n) => n.id));
-      })
-      .catch((e) => setError(e instanceof Error ? e.message : "Failed"));
+        if (!cancelled) {
+          setItems(list.map(normalizeNotif).filter((n) => n.id));
+        }
+        // Viewing the page clears the unread badge.
+        await fetch("/api/notifications", {
+          method: "PATCH",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ all: true }),
+        });
+        if (!cancelled) {
+          setItems((prev) =>
+            prev.map((n) => ({ ...n, readAt: n.readAt ?? new Date().toISOString() })),
+          );
+        }
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : "Failed");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   if (error) return <p className="text-sm text-red-600">{error}</p>;

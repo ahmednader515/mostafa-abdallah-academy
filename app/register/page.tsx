@@ -81,7 +81,10 @@ export default function RegisterPage() {
       footer={
         <>
           {t("auth.register.hasAccount", "Already have an account?")}{" "}
-          <Link href="/login" className="font-semibold text-[#2563EB] transition hover:text-[#1d4ed8]">
+          <Link
+            href="/login"
+            className="font-semibold text-[#2563EB] transition hover:text-[#1d4ed8] dark:text-[#60A5FA] dark:hover:text-[#93C5FD]"
+          >
             {t("auth.register.login", "Log in")}
           </Link>
         </>
@@ -89,10 +92,12 @@ export default function RegisterPage() {
     >
       <form onSubmit={handleSubmit} className="space-y-4">
         {error ? (
-          <div className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-600">{error}</div>
+          <div className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-600 dark:border dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
+            {error}
+          </div>
         ) : null}
         <div>
-          <label htmlFor="name" className="block text-sm font-medium text-slate-800">
+          <label htmlFor="name" className="block text-sm font-medium text-slate-800 dark:text-slate-200">
             {t("auth.register.nameLabel", "Name")}
           </label>
           <AuthInput
@@ -107,7 +112,7 @@ export default function RegisterPage() {
           />
         </div>
         <div>
-          <label htmlFor="email" className="block text-sm font-medium text-slate-800">
+          <label htmlFor="email" className="block text-sm font-medium text-slate-800 dark:text-slate-200">
             {t("auth.register.emailLabel", "Email")}
           </label>
           <AuthInput
@@ -121,7 +126,7 @@ export default function RegisterPage() {
           />
         </div>
         <div>
-          <label htmlFor="student_number" className="block text-sm font-medium text-slate-800">
+          <label htmlFor="student_number" className="block text-sm font-medium text-slate-800 dark:text-slate-200">
             {t("auth.register.phoneLabel", "Phone number")}
           </label>
           <div className="mt-1.5">

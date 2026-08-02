@@ -26,3 +26,10 @@ CREATE TABLE IF NOT EXISTS "UserPlatformSubscription" (
 );
 
 CREATE INDEX IF NOT EXISTS "UserPlatformSubscription_user_expires_idx" ON "UserPlatformSubscription"(user_id, expires_at);
+
+-- حقول بطاقات الاشتراك المحسّنة (نص الزر / الخصم / اللون / الشارة)
+ALTER TABLE "SubscriptionPlan" ADD COLUMN IF NOT EXISTS discount_price DECIMAL(10, 2);
+ALTER TABLE "SubscriptionPlan" ADD COLUMN IF NOT EXISTS discount_percent DECIMAL(5, 2);
+ALTER TABLE "SubscriptionPlan" ADD COLUMN IF NOT EXISTS button_text TEXT;
+ALTER TABLE "SubscriptionPlan" ADD COLUMN IF NOT EXISTS accent_color TEXT;
+ALTER TABLE "SubscriptionPlan" ADD COLUMN IF NOT EXISTS badge_text TEXT;

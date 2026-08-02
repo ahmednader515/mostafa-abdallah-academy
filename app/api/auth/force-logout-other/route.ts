@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { compare } from "bcryptjs";
 import { getUserByEmailOrPhone, clearCurrentSessionId } from "@/lib/db";
+import { closeUserLoginSession } from "@/lib/admin-security-db";
 
 /** تسجيل الخروج من الجهاز الآخر — يتحقق من البريد/كلمة المرور ثم يمسح الجلسة النشطة ليتسنى تسجيل الدخول من هذا الجهاز */
 export async function POST(request: NextRequest) {
@@ -19,6 +20,10 @@ export async function POST(request: NextRequest) {
     if (!ok) {
       return NextResponse.json({ error: "البريد أو كلمة المرور غير صحيحة" }, { status: 401 });
     }
+    await closeUserLoginSession({
+      userId: user.id,
+      lastAction: "logout:forced_from_other_device",
+    }).catch(() => undefined);
     await clearCurrentSessionId(user.id);
     return NextResponse.json({ success: true });
   } catch (e) {

@@ -71,7 +71,7 @@ export default async function CourseCompletePage({ params }: Props) {
   try {
     const certs = await getCertificatesForUser(session.user.id);
     const forCourse = certs.find((c) => c.courseId === course.id);
-    if (forCourse) certificateHref = `/certificates/${encodeURIComponent(forCourse.id)}`;
+    if (forCourse) certificateHref = `/certificate/${encodeURIComponent(forCourse.certificateId)}`;
   } catch {
     /* ignore */
   }

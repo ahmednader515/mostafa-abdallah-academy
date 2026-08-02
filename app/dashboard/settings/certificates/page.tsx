@@ -2,14 +2,11 @@ import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
 import { authOptions } from "@/lib/auth";
 import { getHomepageSettings } from "@/lib/db";
-import {
-  DEFAULT_CERTIFICATE_DESIGN,
-  getCertificateDesignSettings,
-  listCertificatesForAdmin,
-} from "@/lib/lms-spec-db";
+import { listCertificatesForAdmin } from "@/lib/lms-spec-db";
+import { listCertificateTemplates } from "@/lib/certificate-templates-db";
 import { getLocaleFromCookie, getServerTranslator } from "@/lib/i18n/server";
 import { pickLocalizedText } from "@/lib/i18n/localized-field";
-import { CertificatesDesignForm } from "./CertificatesDesignForm";
+import { CertificatesTemplatesForm } from "./CertificatesTemplatesForm";
 
 export default async function DashboardCertificatesSettingsPage() {
   const session = await getServerSession(authOptions);
@@ -18,7 +15,7 @@ export default async function DashboardCertificatesSettingsPage() {
 
   const [t, locale] = await Promise.all([getServerTranslator(), getLocaleFromCookie()]);
 
-  let design = { ...DEFAULT_CERTIFICATE_DESIGN };
+  let templates: Awaited<ReturnType<typeof listCertificateTemplates>> = [];
   let certificates: Array<{
     id: string;
     certificateId: string;
@@ -27,15 +24,15 @@ export default async function DashboardCertificatesSettingsPage() {
     score: number | null;
     issuedAt: string | Date;
   }> = [];
-  let academyName = locale === "en" ? "WorldWay" : "WorldWay";
+  let academyName = "WorldWay";
 
   try {
-    const [designSettings, issued, homepage] = await Promise.all([
-      getCertificateDesignSettings(),
+    const [tpls, issued, homepage] = await Promise.all([
+      listCertificateTemplates(),
       listCertificatesForAdmin(40),
       getHomepageSettings(),
     ]);
-    design = designSettings;
+    templates = tpls;
     certificates = issued.map((c) => ({
       id: c.id,
       certificateId: c.certificateId,
@@ -58,11 +55,11 @@ export default async function DashboardCertificatesSettingsPage() {
       <p className="mt-1 text-sm text-[var(--color-muted)]">
         {t(
           "dashboard.certificatesDesign.description",
-          "Customize certificate colors, logo, signature, and text, and manage issued certificates.",
+          "Create certificate templates (orientation, signatures, seal, QR), assign them per course, and manage issued certificates.",
         )}
       </p>
-      <CertificatesDesignForm
-        initialDesign={design}
+      <CertificatesTemplatesForm
+        initialTemplates={templates}
         initialCertificates={certificates}
         academyName={academyName}
         canDelete={session.user.role === "ADMIN"}

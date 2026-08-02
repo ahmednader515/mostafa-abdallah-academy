@@ -4,7 +4,11 @@ import { authOptions } from "@/lib/auth";
 import { getServerTranslator } from "@/lib/i18n/server";
 import { MessagesView } from "./MessagesView";
 
-export default async function MessagesPage() {
+export default async function MessagesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ c?: string }>;
+}) {
   const session = await getServerSession(authOptions);
   if (!session) redirect("/login");
 
@@ -15,6 +19,7 @@ export default async function MessagesPage() {
   const isStudent = session.user.role === "STUDENT";
   if (!isStaff && !isStudent) redirect("/dashboard");
   const t = await getServerTranslator();
+  const { c: conversationId } = await searchParams;
 
   return (
     <div>
@@ -32,6 +37,7 @@ export default async function MessagesPage() {
         isStaff={isStaff}
         userId={session.user.id}
         userName={session.user.name ?? ""}
+        initialConversationId={conversationId?.trim() || null}
       />
     </div>
   );

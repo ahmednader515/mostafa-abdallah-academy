@@ -36,6 +36,8 @@ type LessonInput = {
   videoUrl?: string;
   content?: string;
   pdfUrl?: string;
+  acceptsHomework?: boolean;
+  isPreview?: boolean;
   attachments?: LessonAttachmentInput[];
 };
 type QuestionOptionInput = { text: string; isCorrect: boolean };
@@ -61,6 +63,7 @@ export async function POST(request: NextRequest) {
     shortDescEn?: string;
     imageUrl?: string;
     price?: number;
+    compareAtPrice?: number | null;
     duration?: string | null;
     level?: string | null;
     maxQuizAttempts?: number | null;
@@ -73,6 +76,7 @@ export async function POST(request: NextRequest) {
     accessDurationDays?: number | null;
     deliveryMode?: "recorded" | "live" | "hybrid";
     isVisible?: boolean;
+    certificateTemplateId?: string | null;
     teacherImageUrl?: string | null;
     teacherDescription?: string | null;
     iconsJson?: string | null;
@@ -186,8 +190,32 @@ export async function POST(request: NextRequest) {
     if (body.iconsJson !== undefined) {
       await sql`UPDATE "Course" SET icons_json = ${body.iconsJson}, updated_at = NOW() WHERE id = ${course.id}`;
     }
+    if (body.compareAtPrice !== undefined) {
+      try {
+        await sql`ALTER TABLE "Course" ADD COLUMN IF NOT EXISTS compare_at_price NUMERIC(12,2)`;
+      } catch {
+        /* noop */
+      }
+      const compareAt =
+        body.compareAtPrice != null && Number.isFinite(Number(body.compareAtPrice))
+          ? Number(body.compareAtPrice)
+          : null;
+      await sql`UPDATE "Course" SET compare_at_price = ${compareAt}, updated_at = NOW() WHERE id = ${course.id}`;
+    }
   } catch (e) {
     console.error("course extras update:", e);
+  }
+
+  if (body.certificateTemplateId !== undefined) {
+    try {
+      const { setCourseCertificateTemplate } = await import("@/lib/certificate-templates-db");
+      await setCourseCertificateTemplate(
+        course.id,
+        body.certificateTemplateId ? String(body.certificateTemplateId) : null
+      );
+    } catch (e) {
+      console.error("setCourseCertificateTemplate error:", e);
+    }
   }
 
   const lessons = body.lessons ?? [];
@@ -212,7 +240,8 @@ export async function POST(request: NextRequest) {
       video_url: le.videoUrl?.trim() || null,
       pdf_url: firstAttachmentUrl || le.pdfUrl?.trim() || null,
       order: orderVal,
-      accepts_homework: !!(le as { acceptsHomework?: boolean }).acceptsHomework,
+      accepts_homework: !!le.acceptsHomework,
+      is_preview: !!le.isPreview,
     });
     await persistLessonAttachmentsFromInput(lesson.id, le);
   }

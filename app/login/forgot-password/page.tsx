@@ -71,17 +71,25 @@ export default function ForgotPasswordPage() {
         "Enter your registered email or phone and your new password. The request will be sent to admin and handled within hours.",
       )}
       footer={
-        <Link href="/login" className="font-semibold text-[#2563EB] hover:underline">
+        <Link
+          href="/login"
+          className="font-semibold text-[#2563EB] hover:underline dark:text-[#60A5FA]"
+        >
           {t("auth.forgot.backToLogin", "Back to login")}
         </Link>
       }
     >
       <form onSubmit={handleSubmit} className="space-y-4">
         {error ? (
-          <div className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-600">{error}</div>
+          <div className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-600 dark:border dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
+            {error}
+          </div>
         ) : null}
         <div>
-          <label htmlFor="emailOrPhone" className="block text-sm font-medium text-slate-800">
+          <label
+            htmlFor="emailOrPhone"
+            className="block text-sm font-medium text-slate-800 dark:text-slate-200"
+          >
             {t("auth.forgot.emailOrPhoneLabel", "Email or phone number")}
           </label>
           <AuthInput

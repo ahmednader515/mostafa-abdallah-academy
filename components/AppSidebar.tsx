@@ -7,6 +7,7 @@ import { useEffect } from "react";
 import { useLocale, useT } from "@/components/LocaleProvider";
 import { useLabel } from "@/components/LabelsProvider";
 import { DEFAULT_NAV_TABS, visibleNavTabs, type NavTab } from "@/lib/nav-tabs";
+import type { PolicyNavLink } from "@/lib/policy-cards";
 
 export type SidebarSocialNetwork =
   | "whatsapp"
@@ -164,6 +165,14 @@ function NavIcon({ icon, active }: { icon: string; active: boolean }) {
           <path {...common} d="M8 9h8M8 12h5" />
         </svg>
       );
+    case "subscriptions":
+      return (
+        <svg className="h-5 w-5" viewBox="0 0 24 24" aria-hidden>
+          <rect {...common} x="3" y="6" width="18" height="12" rx="2" />
+          <path {...common} d="M3 10h18" />
+          <path {...common} d="M7 14h4" />
+        </svg>
+      );
     case "certs":
       return (
         <svg className="h-5 w-5" viewBox="0 0 24 24" aria-hidden>
@@ -192,6 +201,14 @@ function NavIcon({ icon, active }: { icon: string; active: boolean }) {
           />
         </svg>
       );
+    case "docs":
+    case "doc":
+      return (
+        <svg className="h-5 w-5" viewBox="0 0 24 24" aria-hidden>
+          <path {...common} d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z" />
+          <path {...common} d="M14 3v5h5M9 13h6M9 17h6" />
+        </svg>
+      );
     default:
       return (
         <svg className="h-5 w-5" viewBox="0 0 24 24" aria-hidden>
@@ -204,6 +221,9 @@ function NavIcon({ icon, active }: { icon: string; active: boolean }) {
 
 function isActivePath(pathname: string, href: string) {
   if (href === "/") return pathname === "/";
+  // "/dashboard" is the student/admin home tab ("دوراتي") — do not treat every
+  // /dashboard/* page as active for that item.
+  if (href === "/dashboard") return pathname === "/dashboard";
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
@@ -213,12 +233,15 @@ export function AppSidebar({
   onClose,
   socialLinks = [],
   navTabs,
+  policyLinks = [],
 }: {
   open: boolean;
   desktopHidden?: boolean;
   onClose: () => void;
   socialLinks?: SidebarSocialLink[];
   navTabs?: NavTab[];
+  /** صفحات السياسات المنشورة بمكان Header / Both */
+  policyLinks?: PolicyNavLink[];
 }) {
   const pathname = usePathname();
   const { data: session, status } = useSession();
@@ -321,6 +344,41 @@ export function AppSidebar({
               </Link>
             );
           })}
+          {policyLinks.length > 0 ? (
+            <div className="mt-3 border-t border-white/10 pt-3">
+              <p className="app-sidebar-label mb-1 px-3 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                {t("nav.pagesPolicies", "Pages")}
+              </p>
+              {policyLinks.map((link) => {
+                const label =
+                  (locale === "ar" ? link.titleAr : link.titleEn) ||
+                  link.titleEn ||
+                  link.titleAr ||
+                  link.slug;
+                const active = isActivePath(pathname, link.href);
+                return (
+                  <Link
+                    key={link.id}
+                    href={link.href}
+                    onClick={onClose}
+                    title={label}
+                    className={`app-sidebar-link flex items-center gap-3 rounded-xl px-3 py-2 transition ${
+                      active
+                        ? "bg-[#2563EB]/20 text-white"
+                        : "text-slate-300 hover:bg-white/5 hover:text-white"
+                    }`}
+                  >
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl">
+                      <NavIcon icon="docs" active={active} />
+                    </span>
+                    <span className="app-sidebar-label text-sm font-medium leading-tight">
+                      {label}
+                    </span>
+                  </Link>
+                );
+              })}
+            </div>
+          ) : null}
         </nav>
 
         <div className="mt-auto shrink-0 overflow-x-hidden border-t border-white/10 px-2 py-3">

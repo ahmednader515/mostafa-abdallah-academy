@@ -34,3 +34,21 @@ CREATE TABLE IF NOT EXISTS "ActivationCodeQuiz" (
 
 CREATE INDEX IF NOT EXISTS "ActivationCodeQuiz_code_idx" ON "ActivationCodeQuiz"(activation_code_id);
 CREATE INDEX IF NOT EXISTS "ActivationCodeQuiz_quiz_idx" ON "ActivationCodeQuiz"(quiz_id);
+
+-- توسيع أكواد التفعيل: اشتراك / صلاحية / استخدام متعدد
+ALTER TABLE "ActivationCode" ALTER COLUMN course_id DROP NOT NULL;
+ALTER TABLE "ActivationCode" ADD COLUMN IF NOT EXISTS target_type TEXT NOT NULL DEFAULT 'course';
+ALTER TABLE "ActivationCode" ADD COLUMN IF NOT EXISTS plan_id TEXT REFERENCES "SubscriptionPlan"(id) ON DELETE SET NULL;
+ALTER TABLE "ActivationCode" ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ;
+ALTER TABLE "ActivationCode" ADD COLUMN IF NOT EXISTS max_uses INT NOT NULL DEFAULT 1;
+ALTER TABLE "ActivationCode" ADD COLUMN IF NOT EXISTS used_count INT NOT NULL DEFAULT 0;
+
+CREATE TABLE IF NOT EXISTS "ActivationCodeRedemption" (
+  id TEXT PRIMARY KEY,
+  activation_code_id TEXT NOT NULL REFERENCES "ActivationCode"(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES "User"(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (activation_code_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS "ActivationCodeRedemption_code_idx" ON "ActivationCodeRedemption"(activation_code_id);
+CREATE INDEX IF NOT EXISTS "ActivationCodeRedemption_user_idx" ON "ActivationCodeRedemption"(user_id);

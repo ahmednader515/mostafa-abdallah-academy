@@ -455,6 +455,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS user_copyright_code_unique
 ALTER TABLE "User" ADD COLUMN IF NOT EXISTS teacher_subject TEXT;
 ALTER TABLE "User" ADD COLUMN IF NOT EXISTS teacher_avatar_url TEXT;
 ALTER TABLE "User" ADD COLUMN IF NOT EXISTS teacher_homepage_order INTEGER;
+ALTER TABLE "User" ADD COLUMN IF NOT EXISTS teacher_visible_on_homepage BOOLEAN NOT NULL DEFAULT true;
 
 -- ============================================================
 -- 16) الواجبات (add-homework, add-homework-lesson)

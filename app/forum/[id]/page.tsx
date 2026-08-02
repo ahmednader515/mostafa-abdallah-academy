@@ -2,7 +2,12 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { getForumThreadById, listForumReplies } from "@/lib/forum-db";
+import {
+  getForumCategoryById,
+  getForumThreadById,
+  listForumReplies,
+  userCanViewCategory,
+} from "@/lib/forum-db";
 import { getLocaleFromCookie, getServerTranslator } from "@/lib/i18n/server";
 import { ThreadActions } from "./ThreadActions";
 import { ReplyForm } from "./ReplyForm";
@@ -23,6 +28,13 @@ export default async function ForumThreadPage({
 
   const thread = await getForumThreadById(id).catch(() => null);
   if (!thread) notFound();
+  const category = await getForumCategoryById(thread.categoryId).catch(() => null);
+  if (
+    !category ||
+    !userCanViewCategory(category, session?.user?.role, Boolean(session?.user?.id))
+  ) {
+    notFound();
+  }
   const replies = await listForumReplies(id).catch(() => []);
 
   const dateLocale = locale === "en" ? "en-US" : "ar-EG";

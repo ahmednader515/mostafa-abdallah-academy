@@ -81,6 +81,7 @@ export type StudentOverview = {
   };
   subscription: {
     active: boolean;
+    planId: string | null;
     planName: string | null;
     startsAt: string | null;
     expiresAt: string | null;
@@ -224,6 +225,7 @@ export async function getStudentOverview(userId: string): Promise<StudentOvervie
     getUnreadMessageCount(userId).catch(() => 0),
   ]);
 
+  let planId: string | null = null;
   let planName: string | null = null;
   let expiresAt: string | null = null;
   let startsAt: string | null = null;
@@ -244,6 +246,7 @@ export async function getStudentOverview(userId: string): Promise<StudentOvervie
       `;
       const r = rows[0] as Record<string, unknown> | undefined;
       if (r) {
+        planId = r.plan_id ? String(r.plan_id) : null;
         planName = r.name ? String(r.name) : null;
         startsAt =
           r.created_at instanceof Date
@@ -285,6 +288,7 @@ export async function getStudentOverview(userId: string): Promise<StudentOvervie
     },
     subscription: {
       active: hasSub,
+      planId,
       planName,
       startsAt,
       expiresAt,
@@ -452,16 +456,16 @@ export async function searchStudentAccount(userId: string, q: string) {
   let certificates: { id: string; title: string; href: string }[] = [];
   try {
     const rows = await sql`
-      SELECT id, course_title, created_at FROM "Certificate"
+      SELECT id, certificate_id, course_title, issued_at FROM "Certificate"
       WHERE user_id = ${userId}
-      ORDER BY created_at DESC
+      ORDER BY issued_at DESC
       LIMIT 50
     `;
     certificates = (rows as Record<string, unknown>[])
       .map((r) => ({
         id: String(r.id),
         title: String(r.course_title ?? "Certificate"),
-        href: `/certificates/${encodeURIComponent(String(r.id))}`,
+        href: `/certificate/${encodeURIComponent(String(r.certificate_id ?? r.id))}`,
       }))
       .filter((c) => c.title.toLowerCase().includes(query));
   } catch {
@@ -477,6 +481,7 @@ export async function listStudentLoginDevices(userId: string) {
       SELECT id, ip, user_agent, created_at
       FROM "UserLoginLog"
       WHERE user_id = ${userId}
+        AND (status IS NULL OR status = 'success')
       ORDER BY created_at DESC
       LIMIT 20
     `;

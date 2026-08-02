@@ -28,6 +28,8 @@ type BrandingSettings = {
   seoTitleEn: string | null;
   seoDescription: string | null;
   seoDescriptionEn: string | null;
+  authLoginBody: string | null;
+  authLoginBodyEn: string | null;
 };
 
 function ColorField({
@@ -181,6 +183,8 @@ export function BrandingSettingsForm({ initialSettings }: { initialSettings: Bra
     seoTitleEn: initialSettings.seoTitleEn ?? "",
     seoDescription: initialSettings.seoDescription ?? "",
     seoDescriptionEn: initialSettings.seoDescriptionEn ?? "",
+    authLoginBody: initialSettings.authLoginBody ?? "",
+    authLoginBodyEn: initialSettings.authLoginBodyEn ?? "",
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -225,6 +229,8 @@ export function BrandingSettingsForm({ initialSettings }: { initialSettings: Bra
           seoTitleEn: form.seoTitleEn.trim() || null,
           seoDescription: form.seoDescription.trim() || null,
           seoDescriptionEn: form.seoDescriptionEn.trim() || null,
+          authLoginBody: form.authLoginBody.trim() || null,
+          authLoginBodyEn: form.authLoginBodyEn.trim() || null,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -355,6 +361,48 @@ export function BrandingSettingsForm({ initialSettings }: { initialSettings: Bra
               />
               {t("dashboard.brandingForm.showName", "Show platform name")}
             </label>
+          </div>
+        </div>
+      </div>
+
+      <div className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] p-6">
+        <h3 className="mb-2 text-lg font-semibold text-[var(--color-foreground)]">
+          {t("dashboard.brandingForm.loginPageTitle", "Login page")}
+        </h3>
+        <p className="mb-4 text-sm text-[var(--color-muted)]">
+          {t(
+            "dashboard.brandingForm.loginPageIntro",
+            "Text shown under the welcome headline on the login page (brand panel).",
+          )}
+        </p>
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-[var(--color-foreground)]">
+              {t("dashboard.brandingForm.authLoginBody", "Login tagline (Arabic)")}
+            </label>
+            <textarea
+              value={form.authLoginBody}
+              onChange={(e) => setForm((f) => ({ ...f, authLoginBody: e.target.value }))}
+              rows={3}
+              placeholder={t(
+                "dashboard.brandingForm.authLoginBodyPh",
+                "من القاعة إلى قمرة القيادة — واصل رحلتك التعليمية باحتراف.",
+              )}
+              className="mt-1 w-full rounded-[var(--radius-btn)] border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2 text-sm"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-[var(--color-foreground)]">
+              {t("dashboard.brandingForm.authLoginBodyEn", "Login tagline (English)")}
+            </label>
+            <textarea
+              dir="ltr"
+              value={form.authLoginBodyEn}
+              onChange={(e) => setForm((f) => ({ ...f, authLoginBodyEn: e.target.value }))}
+              rows={3}
+              placeholder="From the classroom to the cockpit — continue your training with confidence."
+              className="mt-1 w-full rounded-[var(--radius-btn)] border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2 text-sm"
+            />
           </div>
         </div>
       </div>

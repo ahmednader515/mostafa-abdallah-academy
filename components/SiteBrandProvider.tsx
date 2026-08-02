@@ -9,6 +9,8 @@ type SiteBrandContextValue = {
   platformNameColor2: string | null;
   showPlatformName: boolean;
   showPlatformLogo: boolean;
+  authLoginBody: string | null;
+  authLoginBodyEn: string | null;
 };
 
 const SiteBrandContext = createContext<SiteBrandContextValue>({
@@ -18,6 +20,8 @@ const SiteBrandContext = createContext<SiteBrandContextValue>({
   platformNameColor2: null,
   showPlatformName: true,
   showPlatformLogo: true,
+  authLoginBody: null,
+  authLoginBodyEn: null,
 });
 
 export function SiteBrandProvider({
@@ -27,6 +31,8 @@ export function SiteBrandProvider({
   platformNameColor2,
   showPlatformName = true,
   showPlatformLogo = true,
+  authLoginBody = null,
+  authLoginBodyEn = null,
   children,
 }: {
   platformName?: string | null;
@@ -35,6 +41,8 @@ export function SiteBrandProvider({
   platformNameColor2?: string | null;
   showPlatformName?: boolean;
   showPlatformLogo?: boolean;
+  authLoginBody?: string | null;
+  authLoginBodyEn?: string | null;
   children: ReactNode;
 }) {
   const value = useMemo(
@@ -45,6 +53,8 @@ export function SiteBrandProvider({
       platformNameColor2: platformNameColor2?.trim() || null,
       showPlatformName: showPlatformName !== false,
       showPlatformLogo: showPlatformLogo !== false,
+      authLoginBody: authLoginBody?.trim() || null,
+      authLoginBodyEn: authLoginBodyEn?.trim() || null,
     }),
     [
       platformName,
@@ -53,6 +63,8 @@ export function SiteBrandProvider({
       platformNameColor2,
       showPlatformName,
       showPlatformLogo,
+      authLoginBody,
+      authLoginBodyEn,
     ],
   );
 

@@ -12,7 +12,7 @@ export default async function ForumAdminPage() {
   if (session.user.role !== "ADMIN" && session.user.role !== "ASSISTANT_ADMIN") redirect("/dashboard");
   const t = await getServerTranslator();
   const [categories, threads] = await Promise.all([
-    listForumCategories(false).catch(() => []),
+    listForumCategories(false, { withThreadCount: true }).catch(() => []),
     listForumThreads(null, 50).catch(() => []),
   ]);
 

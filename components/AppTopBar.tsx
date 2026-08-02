@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { signOut, useSession } from "next-auth/react";
+import { useSession } from "next-auth/react";
 import { FormEvent, useEffect, useRef, useState, type ReactNode } from "react";
 import type { UserRole } from "@/lib/types";
 import { LanguageToggle } from "@/components/LanguageToggle";
@@ -11,6 +11,7 @@ import { useT } from "@/components/LocaleProvider";
 import { NotificationsBell } from "@/components/NotificationsBell";
 import { SiteBrandMark } from "@/components/SiteBrandMark";
 import { MessagesUnreadBadge } from "@/components/MessagesUnreadBadge";
+import { signOutFully } from "@/lib/client-sign-out";
 
 function TopBarUser() {
   const { data: session, status } = useSession();
@@ -96,14 +97,9 @@ function TopBarUser() {
           <button
             type="button"
             className="w-full px-3 py-2 text-start text-sm text-red-400 hover:bg-white/10"
-            onClick={async () => {
+            onClick={() => {
               setOpen(false);
-              try {
-                await fetch("/api/auth/clear-session", { method: "POST", credentials: "include" });
-              } catch {
-                /* ignore */
-              }
-              signOut({ callbackUrl: "/" });
+              void signOutFully({ callbackUrl: "/", reason: "manual" });
             }}
           >
             {t("header.logout", "Log out")}

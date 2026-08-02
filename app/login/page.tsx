@@ -18,7 +18,7 @@ function LoginForm() {
   const [forceLogoutLoading, setForceLogoutLoading] = useState(false);
   const router = useRouter();
   const searchParams = useSearchParams();
-  const callbackUrl = searchParams.get("callbackUrl") ?? "/dashboard";
+  const callbackUrl = searchParams.get("callbackUrl") ?? "/";
   const reasonElsewhere = searchParams.get("reason") === "session_ended_elsewhere";
   const successMessage = searchParams.get("message");
 
@@ -87,14 +87,16 @@ function LoginForm() {
           "This account is currently logged in from another device or browser. To continue here, log out the other device first.",
         )}
       >
-        <p className="text-sm leading-relaxed text-slate-600">
+        <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-300">
           {t(
             "auth.login.concurrentSecurityHint",
             'If you suspect your account was compromised, update your password and account details from "Edit account" after logging in.',
           )}
         </p>
         {error ? (
-          <div className="mt-4 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-600">{error}</div>
+          <div className="mt-4 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-600 dark:border dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
+            {error}
+          </div>
         ) : null}
         <form onSubmit={handleForceLogoutOther} className="mt-6">
           <button
@@ -110,7 +112,7 @@ function LoginForm() {
         <button
           type="button"
           onClick={() => setConcurrentSession(false)}
-          className="mt-4 w-full text-sm text-slate-500 transition hover:text-slate-800 hover:underline"
+          className="mt-4 w-full text-sm text-slate-500 transition hover:text-slate-800 hover:underline dark:text-slate-400 dark:hover:text-slate-200"
         >
           {t("auth.login.concurrentCancel", "Cancel and go back to login")}
         </button>
@@ -126,14 +128,17 @@ function LoginForm() {
       footer={
         <>
           {t("auth.login.noAccount", "Don't have an account?")}{" "}
-          <Link href="/register" className="font-semibold text-[#2563EB] transition hover:text-[#1d4ed8]">
+          <Link
+            href="/register"
+            className="font-semibold text-[#2563EB] transition hover:text-[#1d4ed8] dark:text-[#60A5FA] dark:hover:text-[#93C5FD]"
+          >
             {t("auth.login.createAccount", "Create account")}
           </Link>
         </>
       }
     >
       {reasonElsewhere ? (
-        <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+        <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
           {t(
             "auth.login.sessionEndedElsewhere",
             "You were logged out because this account was opened on another device. Log in again here if you want.",
@@ -141,17 +146,19 @@ function LoginForm() {
         </div>
       ) : null}
       {successMessage ? (
-        <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+        <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200">
           {successMessage}
         </div>
       ) : null}
 
       <form onSubmit={handleSubmit} className="space-y-4">
         {error ? (
-          <div className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-600">{error}</div>
+          <div className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-600 dark:border dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
+            {error}
+          </div>
         ) : null}
         <div>
-          <label htmlFor="email" className="block text-sm font-medium text-slate-800">
+          <label htmlFor="email" className="block text-sm font-medium text-slate-800 dark:text-slate-200">
             {t("auth.login.emailOrPhoneLabel", "Email or phone number")}
           </label>
           <AuthInput
@@ -173,7 +180,10 @@ function LoginForm() {
             required
           />
           <p className="mt-2 text-start text-xs">
-            <Link href="/login/forgot-password" className="font-medium text-[#2563EB] hover:underline">
+            <Link
+              href="/login/forgot-password"
+              className="font-medium text-[#2563EB] hover:underline dark:text-[#60A5FA]"
+            >
               {t("auth.login.forgotPassword", "Forgot password?")}
             </Link>
           </p>
@@ -194,11 +204,11 @@ function AuthFallback() {
   return (
     <div className="auth-page relative flex min-h-screen items-center justify-center px-4">
       <div className="auth-page-bg absolute inset-0" aria-hidden />
-      <div className="relative z-10 w-full max-w-md rounded-[1.75rem] border border-white/60 bg-white p-8 shadow-xl">
-        <div className="h-8 w-48 animate-pulse rounded-lg bg-slate-100" />
-        <div className="mt-4 h-4 w-full animate-pulse rounded bg-slate-100" />
-        <div className="mt-6 h-11 w-full animate-pulse rounded-xl bg-slate-100" />
-        <div className="mt-3 h-11 w-full animate-pulse rounded-xl bg-slate-100" />
+      <div className="relative z-10 w-full max-w-md rounded-[1.75rem] border border-white/60 bg-white p-8 shadow-xl dark:border-white/10 dark:bg-[#111827]">
+        <div className="h-8 w-48 animate-pulse rounded-lg bg-slate-100 dark:bg-white/10" />
+        <div className="mt-4 h-4 w-full animate-pulse rounded bg-slate-100 dark:bg-white/10" />
+        <div className="mt-6 h-11 w-full animate-pulse rounded-xl bg-slate-100 dark:bg-white/10" />
+        <div className="mt-3 h-11 w-full animate-pulse rounded-xl bg-slate-100 dark:bg-white/10" />
       </div>
     </div>
   );

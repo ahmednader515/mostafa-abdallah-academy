@@ -66,7 +66,7 @@ export default async function VerifyCertificatePage({
             </dl>
             <div className="mt-6 text-center">
               <Link
-                href={`/certificates/${encodeURIComponent(certificate.id)}`}
+                href={`/certificate/${encodeURIComponent(certificate.certificateId)}`}
                 className="text-sm font-medium text-[#2563EB] hover:underline"
               >
                 {t(`${C}.viewOfficialCertificate`)}

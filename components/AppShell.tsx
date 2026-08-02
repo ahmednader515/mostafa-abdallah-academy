@@ -5,6 +5,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { AppSidebar, type SidebarSocialLink } from "@/components/AppSidebar";
 import { AppTopBar } from "@/components/AppTopBar";
 import type { NavTab } from "@/lib/nav-tabs";
+import type { PolicyNavLink } from "@/lib/policy-cards";
 
 const AUTH_PATHS = ["/login", "/register"];
 
@@ -27,6 +28,7 @@ export function AppShell({
   subscriptionBanner,
   socialLinks,
   navTabs,
+  policyLinks,
 }: {
   children: ReactNode;
   footer: ReactNode;
@@ -36,6 +38,7 @@ export function AppShell({
   subscriptionBanner?: ReactNode;
   socialLinks?: SidebarSocialLink[];
   navTabs?: NavTab[] | null;
+  policyLinks?: PolicyNavLink[] | null;
 }) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -73,6 +76,7 @@ export function AppShell({
         onClose={() => setMobileOpen(false)}
         socialLinks={socialLinks}
         navTabs={navTabs ?? undefined}
+        policyLinks={policyLinks ?? undefined}
       />
       <div className="app-shell-main">
         <AppTopBar

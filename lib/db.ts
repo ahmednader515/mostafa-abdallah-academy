@@ -13,6 +13,7 @@ import type {
   ActivationCode,
   HomeworkSubmission,
   LessonRating,
+  CourseRating,
   Lesson,
   LessonAttachment,
   Quiz,
@@ -26,6 +27,13 @@ import type {
   PlatformDetailsItem,
 } from "./types";
 import { generateCopyrightCodeCandidate } from "./copyright-code";
+import { resolveSubscriptionPlanPricing } from "./subscription-pricing";
+export { resolveSubscriptionPlanPricing } from "./subscription-pricing";
+import {
+  normalizeSubscriptionDurationKind,
+  SUBSCRIPTION_DURATION_KINDS,
+  subscriptionDurationDays,
+} from "./subscription-duration";
 import {
   ACADEMY_HOME_HERO_SLIDES,
   DEFAULT_HOMEPAGE_STATS,
@@ -274,6 +282,14 @@ export async function ensureTeacherHomepageOrderColumn(): Promise<void> {
     } catch {
       /* تجاهل */
     }
+    try {
+      await sql`
+        ALTER TABLE "User"
+        ADD COLUMN IF NOT EXISTS teacher_visible_on_homepage BOOLEAN NOT NULL DEFAULT true
+      `;
+    } catch {
+      /* تجاهل */
+    }
   });
 }
 
@@ -406,6 +422,8 @@ export async function updateUser(
     teacher_subject?: string | null;
     teacher_avatar_url?: string | null;
     teacher_bio?: string | null;
+    teacher_homepage_order?: number | null;
+    teacher_visible_on_homepage?: boolean;
     is_suspended?: boolean;
     last_login_at?: Date | null;
   }
@@ -435,6 +453,30 @@ export async function updateUser(
     try {
       await sql`ALTER TABLE "User" ADD COLUMN IF NOT EXISTS teacher_bio TEXT`;
       await sql`UPDATE "User" SET teacher_bio = ${data.teacher_bio}, updated_at = NOW() WHERE id = ${id}`;
+    } catch {
+      /* noop */
+    }
+  }
+  if (data.teacher_homepage_order !== undefined) {
+    try {
+      await ensureTeacherHomepageOrderColumn();
+      await sql`
+        UPDATE "User"
+        SET teacher_homepage_order = ${data.teacher_homepage_order}, updated_at = NOW()
+        WHERE id = ${id}
+      `;
+    } catch {
+      /* noop */
+    }
+  }
+  if (data.teacher_visible_on_homepage !== undefined) {
+    try {
+      await ensureTeacherHomepageOrderColumn();
+      await sql`
+        UPDATE "User"
+        SET teacher_visible_on_homepage = ${data.teacher_visible_on_homepage}, updated_at = NOW()
+        WHERE id = ${id}
+      `;
     } catch {
       /* noop */
     }
@@ -599,6 +641,15 @@ export async function getCategoryById(id: string): Promise<Category | null> {
   if (!id?.trim()) return null;
   const rows = await sql`SELECT * FROM "Category" WHERE id = ${id.trim()} LIMIT 1`;
   return (rowToCamel(rows[0] as Record<string, unknown>) as Category) ?? null;
+}
+
+export async function getCategoryBySlug(slug: string): Promise<Category | null> {
+  await ensureCategoryCreatedByColumn();
+  const s = slug.trim();
+  if (!s) return null;
+  const rows = await sql`SELECT * FROM "Category" WHERE slug = ${s} LIMIT 1`;
+  const r = rows[0] as Record<string, unknown> | undefined;
+  return r ? (rowToCamel(r) as Category) : null;
 }
 
 /** هل يحق لهذا المستخدم اختيار هذا القسم أو حذفه من لوحة الدورات؟ */
@@ -1066,6 +1117,8 @@ async function ensureHomepageBilingualTextColumns(): Promise<void> {
       await sql`ALTER TABLE "HomepageSetting" ADD COLUMN IF NOT EXISTS page_title_en TEXT`;
       await sql`ALTER TABLE "HomepageSetting" ADD COLUMN IF NOT EXISTS seo_description TEXT`;
       await sql`ALTER TABLE "HomepageSetting" ADD COLUMN IF NOT EXISTS seo_description_en TEXT`;
+      await sql`ALTER TABLE "HomepageSetting" ADD COLUMN IF NOT EXISTS auth_login_body TEXT`;
+      await sql`ALTER TABLE "HomepageSetting" ADD COLUMN IF NOT EXISTS auth_login_body_en TEXT`;
       await sql`ALTER TABLE "HomepageSetting" ADD COLUMN IF NOT EXISTS social_right_label_en TEXT`;
       await sql`ALTER TABLE "HomepageSetting" ADD COLUMN IF NOT EXISTS social_left_label_en TEXT`;
       await sql`ALTER TABLE "HomepageSetting" ADD COLUMN IF NOT EXISTS hero3_title_en TEXT`;
@@ -1178,6 +1231,42 @@ async function ensureHomepageStoreEnabledColumn(): Promise<void> {
       /* DDL غير متاح */
     }
   });
+}
+
+async function ensureHomepageJobsHeroImageColumn(): Promise<void> {
+  return ensureOnce("ensureHomepageJobsHeroImageColumn", async () => {
+    try {
+      await sql`ALTER TABLE "HomepageSetting" ADD COLUMN IF NOT EXISTS jobs_hero_image_url TEXT`;
+    } catch {
+      /* DDL غير متاح */
+    }
+  });
+}
+
+const DEFAULT_JOBS_HERO_IMAGE = "/images/jobs-hero.png";
+
+export async function getJobsHeroImageUrl(): Promise<string> {
+  try {
+    await ensureHomepageJobsHeroImageColumn();
+    const rows = await sql`SELECT jobs_hero_image_url FROM "HomepageSetting" WHERE id = 'default' LIMIT 1`;
+    const url = (rows[0] as { jobs_hero_image_url?: string | null } | undefined)?.jobs_hero_image_url?.trim();
+    return url || DEFAULT_JOBS_HERO_IMAGE;
+  } catch {
+    return DEFAULT_JOBS_HERO_IMAGE;
+  }
+}
+
+export async function setJobsHeroImageUrl(url: string | null): Promise<string> {
+  await ensureHomepageJobsHeroImageColumn();
+  const cleaned = url?.trim() || null;
+  await sql`
+    INSERT INTO "HomepageSetting" (id, jobs_hero_image_url, updated_at)
+    VALUES ('default', ${cleaned}, NOW())
+    ON CONFLICT (id) DO UPDATE SET
+      jobs_hero_image_url = EXCLUDED.jobs_hero_image_url,
+      updated_at = NOW()
+  `;
+  return cleaned || DEFAULT_JOBS_HERO_IMAGE;
 }
 
 /** عنوان ووصف قسم المتجر في الصفحة الرئيسية */
@@ -1365,12 +1454,18 @@ export async function setTeacherHomepageFeaturedSlots(orderedIds: string[]): Pro
   for (const id of unique) {
     const u = await getUserById(id);
     if (!u || u.role !== "TEACHER") throw new Error("معرّف مدرس غير صالح");
+    const visible =
+      (u as { teacher_visible_on_homepage?: boolean | null }).teacher_visible_on_homepage !== false;
+    if (!visible) throw new Error("لا يمكن تمييز مدرب مخفي عن الرئيسية — أظهره أولاً");
   }
   await sql`UPDATE "User" SET teacher_homepage_order = NULL, updated_at = NOW() WHERE role = 'TEACHER'`;
   for (let i = 0; i < unique.length; i++) {
     const ord = i + 1;
     await sql`
-      UPDATE "User" SET teacher_homepage_order = ${ord}, updated_at = NOW()
+      UPDATE "User"
+      SET teacher_homepage_order = ${ord},
+          teacher_visible_on_homepage = true,
+          updated_at = NOW()
       WHERE id = ${unique[i]} AND role = 'TEACHER'
     `;
   }
@@ -1623,6 +1718,14 @@ async function getHomepageSettingsUncached(): Promise<HomepageSetting> {
       seoDescriptionEn:
         row.seo_description_en != null && String(row.seo_description_en).trim() !== ""
           ? String(row.seo_description_en).trim().slice(0, 1000)
+          : null,
+      authLoginBody:
+        row.auth_login_body != null && String(row.auth_login_body).trim() !== ""
+          ? String(row.auth_login_body).trim().slice(0, 500)
+          : null,
+      authLoginBodyEn:
+        row.auth_login_body_en != null && String(row.auth_login_body_en).trim() !== ""
+          ? String(row.auth_login_body_en).trim().slice(0, 500)
           : null,
       heroBgPreset: (c.heroBgPreset as string) ?? HOMEPAGE_DEFAULTS.heroBgPreset,
       heroBgCustomFrom: (() => {
@@ -2691,6 +2794,13 @@ async function ensurePlatformSubscriptionSchema(): Promise<void> {
     await sql`ALTER TABLE "SubscriptionPlan" ADD COLUMN IF NOT EXISTS duration_value INT NOT NULL DEFAULT 1`;
     await sql`ALTER TABLE "SubscriptionPlan" ADD COLUMN IF NOT EXISTS covers_courses BOOLEAN NOT NULL DEFAULT true`;
     await sql`ALTER TABLE "SubscriptionPlan" ADD COLUMN IF NOT EXISTS covers_library BOOLEAN NOT NULL DEFAULT true`;
+    await sql`ALTER TABLE "SubscriptionPlan" ADD COLUMN IF NOT EXISTS covers_external_training BOOLEAN NOT NULL DEFAULT false`;
+    await sql`ALTER TABLE "SubscriptionPlan" ADD COLUMN IF NOT EXISTS discount_price DECIMAL(10, 2)`;
+    await sql`ALTER TABLE "SubscriptionPlan" ADD COLUMN IF NOT EXISTS discount_percent DECIMAL(5, 2)`;
+    await sql`ALTER TABLE "SubscriptionPlan" ADD COLUMN IF NOT EXISTS button_text TEXT`;
+    await sql`ALTER TABLE "SubscriptionPlan" ADD COLUMN IF NOT EXISTS accent_color TEXT`;
+    await sql`ALTER TABLE "SubscriptionPlan" ADD COLUMN IF NOT EXISTS badge_text TEXT`;
+    await sql`ALTER TABLE "SubscriptionPlan" ADD COLUMN IF NOT EXISTS features_json TEXT`;
     // إزالة قيد المدد القديم إن وُجد لتسمح بـ months_3/6/9
     try {
       await sql`
@@ -2708,6 +2818,14 @@ async function ensurePlatformSubscriptionSchema(): Promise<void> {
     } catch {
       /* تجاهل */
     }
+    // Migrate legacy months_* duration_kind values to *_months
+    try {
+      await sql`UPDATE "SubscriptionPlan" SET duration_kind = '3_months' WHERE duration_kind = 'months_3'`;
+      await sql`UPDATE "SubscriptionPlan" SET duration_kind = '6_months' WHERE duration_kind = 'months_6'`;
+      await sql`UPDATE "SubscriptionPlan" SET duration_kind = '9_months' WHERE duration_kind = 'months_9'`;
+    } catch {
+      /* ignore */
+    }
     await sql`
       CREATE TABLE IF NOT EXISTS "UserPlatformSubscription" (
         id TEXT PRIMARY KEY,
@@ -2720,10 +2838,24 @@ async function ensurePlatformSubscriptionSchema(): Promise<void> {
     `;
     await sql`CREATE INDEX IF NOT EXISTS "UserPlatformSubscription_user_expires_idx" ON "UserPlatformSubscription"(user_id, expires_at)`;
     await sql`CREATE INDEX IF NOT EXISTS "SubscriptionPlan_active_sort_idx" ON "SubscriptionPlan"(is_active, sort_order)`;
+    await sql`
+      CREATE TABLE IF NOT EXISTS "SubscriptionPlanCoverage" (
+        plan_id TEXT NOT NULL REFERENCES "SubscriptionPlan"(id) ON DELETE CASCADE,
+        content_kind TEXT NOT NULL,
+        target_id TEXT NOT NULL,
+        PRIMARY KEY (plan_id, content_kind, target_id)
+      )
+    `;
+    await sql`CREATE INDEX IF NOT EXISTS "SubscriptionPlanCoverage_kind_target_idx" ON "SubscriptionPlanCoverage"(content_kind, target_id)`;
     platformSubscriptionSchemaEnsured = true;
   } catch {
     /* إنشاء الجداول قد يفشل بدون صلاحية CREATE */
   }
+}
+
+/** للتصدير للاستخدام من طبقة صلاحيات الاشتراك */
+export async function ensurePlatformSubscriptionSchemaExported(): Promise<void> {
+  await ensurePlatformSubscriptionSchema();
 }
 
 export async function getSubscriptionsFeatureEnabled(): Promise<boolean> {
@@ -2796,6 +2928,7 @@ async function ensureStoreProductsSchema(): Promise<void> {
     await sql`ALTER TABLE "StoreProduct" ADD COLUMN IF NOT EXISTS article_body TEXT`;
     await sql`ALTER TABLE "StoreProduct" ADD COLUMN IF NOT EXISTS file_kind TEXT NOT NULL DEFAULT 'other'`;
     await sql`ALTER TABLE "StoreProduct" ADD COLUMN IF NOT EXISTS access_mode TEXT NOT NULL DEFAULT 'free'`;
+    await sql`ALTER TABLE "StoreProduct" ADD COLUMN IF NOT EXISTS view_count INTEGER NOT NULL DEFAULT 0`;
     storeProductsSchemaEnsured = true;
   } catch {
     /* DDL غير متاح */
@@ -2817,6 +2950,7 @@ export type StoreProductRow = {
   categoryId: string | null;
   contentType: "file" | "article";
   articleBody: string | null;
+  viewCount: number;
 };
 
 function mapStoreProduct(r: Record<string, unknown>): StoreProductRow {
@@ -2838,6 +2972,7 @@ function mapStoreProduct(r: Record<string, unknown>): StoreProductRow {
     categoryId: r.category_id ? String(r.category_id) : null,
     contentType: contentType === "article" ? "article" : "file",
     articleBody: r.article_body ? String(r.article_body) : null,
+    viewCount: Number(r.view_count ?? 0) || 0,
   };
 }
 
@@ -2846,7 +2981,7 @@ export async function listStoreProductsPublic(): Promise<StoreProductRow[]> {
     await ensureStoreProductsSchema();
     const rows = await sql`
       SELECT id, title, description, price, image_url, pdf_url, is_active, sort_order, created_at,
-             category_id, content_type, article_body
+             category_id, content_type, article_body, view_count
       FROM "StoreProduct"
       WHERE is_active = true
       ORDER BY sort_order ASC, created_at DESC
@@ -2854,6 +2989,19 @@ export async function listStoreProductsPublic(): Promise<StoreProductRow[]> {
     return (rows as Record<string, unknown>[]).map(mapStoreProduct);
   } catch {
     return [];
+  }
+}
+
+export async function incrementStoreProductViewCount(id: string): Promise<void> {
+  try {
+    await ensureStoreProductsSchema();
+    await sql`
+      UPDATE "StoreProduct"
+      SET view_count = COALESCE(view_count, 0) + 1, updated_at = NOW()
+      WHERE id = ${id.trim()} AND is_active = true
+    `;
+  } catch {
+    /* ignore */
   }
 }
 
@@ -2874,7 +3022,7 @@ export async function listStoreProductsAll(): Promise<StoreProductRow[]> {
   await ensureStoreProductsSchema();
   const rows = await sql`
     SELECT id, title, description, price, cost_price, image_url, pdf_url, is_active, sort_order, created_at,
-           category_id, content_type, article_body
+           category_id, content_type, article_body, view_count
     FROM "StoreProduct"
     ORDER BY created_at DESC
   `;
@@ -2887,7 +3035,7 @@ export async function getStoreProductById(id: string): Promise<StoreProductRow |
   if (!pid) return null;
   const rows = await sql`
     SELECT id, title, description, price, cost_price, image_url, pdf_url, is_active, sort_order, created_at,
-           category_id, content_type, article_body
+           category_id, content_type, article_body, view_count
     FROM "StoreProduct"
     WHERE id = ${pid}
     LIMIT 1
@@ -3194,6 +3342,7 @@ export async function deleteStorePurchaseById(purchaseId: string): Promise<void>
 export async function buyStoreProduct(
   userId: string,
   productId: string,
+  opts?: { priceOverride?: number },
 ): Promise<{ purchased: boolean; alreadyOwned: boolean; pricePaid: number }> {
   await ensureStorePurchasesSchema();
   const uid = userId.trim();
@@ -3212,15 +3361,33 @@ export async function buyStoreProduct(
   if (!product?.id || !product.is_active) throw new Error("المنتج غير متاح");
   const price = Number(product.price ?? 0);
 
-  const subActive = await userHasActivePlatformSubscription(uid);
-  const payable = subActive ? 0 : Math.max(0, price);
+  const { userCanAccessLibraryProductViaSubscription } = await import("./subscription-access");
+  const subCoversProduct = await userCanAccessLibraryProductViaSubscription(uid, pid);
+  let payable = subCoversProduct ? 0 : Math.max(0, price);
+  if (
+    !subCoversProduct &&
+    opts?.priceOverride != null &&
+    Number.isFinite(opts.priceOverride) &&
+    opts.priceOverride >= 0
+  ) {
+    payable = Math.min(payable, Math.max(0, Number(opts.priceOverride)));
+  }
 
   if (payable > 0) {
     const user = await getUserById(uid);
     if (!user) throw new Error("المستخدم غير موجود");
     const bal = Number(user.balance ?? 0);
     if (bal < payable) throw new Error("رصيدك غير كافٍ لشراء هذا المنتج");
-    await updateUser(uid, { balance: String(Math.max(0, bal - payable)) });
+    const { adjustWalletBalance } = await import("./wallet");
+    await adjustWalletBalance({
+      userId: uid,
+      amount: -payable,
+      type: "purchase",
+      reason: "Store / library purchase",
+      referenceType: "store_product",
+      referenceId: pid,
+      createdBy: uid,
+    });
   }
 
   const purchaseId = generateId();
@@ -3238,21 +3405,164 @@ export type SubscriptionPlanPublic = {
   description: string;
   imageUrl: string | null;
   durationKind: SubscriptionDurationKind;
+  /** السعر الأساسي */
   price: number;
+  /** سعر بعد الخصم (اختياري) — إن وُجد وهو أقل من السعر الأساسي يُستخدم للشراء والعرض */
+  discountPrice: number | null;
+  /** نسبة الخصم للعرض (اختياري) */
+  discountPercent: number | null;
+  buttonText: string | null;
+  accentColor: string | null;
+  badgeText: string | null;
+  /** JSON أو أسطر مميزات الباقة */
+  featuresJson: string | null;
+  sortOrder: number;
+  coversCourses: boolean;
+  coversLibrary: boolean;
+  coversExternalTraining: boolean;
+  courseCategoryIds: string[];
+  libraryCategoryIds: string[];
+  externalTrainingIds: string[];
 };
 
 export type SubscriptionPlanAdmin = SubscriptionPlanPublic & { isActive: boolean };
 
+function mapSubscriptionPlanRow(r: Record<string, unknown>, includeActive: boolean): SubscriptionPlanPublic & { isActive?: boolean } {
+  const base: SubscriptionPlanPublic = {
+    id: String(r.id),
+    name: String(r.name ?? ""),
+    description: String(r.description ?? ""),
+    imageUrl: r.image_url ? String(r.image_url) : null,
+    durationKind:
+      normalizeSubscriptionDurationKind(String(r.duration_kind)) ??
+      (String(r.duration_kind) as SubscriptionDurationKind),
+    price: Number(r.price ?? 0),
+    discountPrice:
+      r.discount_price != null && r.discount_price !== ""
+        ? Number(r.discount_price)
+        : null,
+    discountPercent:
+      r.discount_percent != null && r.discount_percent !== ""
+        ? Number(r.discount_percent)
+        : null,
+    buttonText: r.button_text != null && String(r.button_text).trim() !== "" ? String(r.button_text).trim() : null,
+    accentColor: r.accent_color != null && String(r.accent_color).trim() !== "" ? String(r.accent_color).trim() : null,
+    badgeText: r.badge_text != null && String(r.badge_text).trim() !== "" ? String(r.badge_text).trim() : null,
+    featuresJson: r.features_json != null && String(r.features_json).trim() !== "" ? String(r.features_json) : null,
+    sortOrder: Number(r.sort_order ?? 0) || 0,
+    coversCourses: r.covers_courses !== false && r.covers_courses !== "f",
+    coversLibrary: r.covers_library !== false && r.covers_library !== "f",
+    coversExternalTraining:
+      r.covers_external_training === true || r.covers_external_training === "t",
+    courseCategoryIds: Array.isArray(r._courseCategoryIds)
+      ? (r._courseCategoryIds as string[])
+      : [],
+    libraryCategoryIds: Array.isArray(r._libraryCategoryIds)
+      ? (r._libraryCategoryIds as string[])
+      : [],
+    externalTrainingIds: Array.isArray(r._externalTrainingIds)
+      ? (r._externalTrainingIds as string[])
+      : [],
+  };
+  if (includeActive) return { ...base, isActive: Boolean(r.is_active) };
+  return base;
+}
+
+export async function listPlanCoverageByPlanIds(planIds: string[]): Promise<
+  Map<string, { courseCategoryIds: string[]; libraryCategoryIds: string[]; externalTrainingIds: string[] }>
+> {
+  const map = new Map<
+    string,
+    { courseCategoryIds: string[]; libraryCategoryIds: string[]; externalTrainingIds: string[] }
+  >();
+  const ids = [...new Set(planIds.map((x) => x.trim()).filter(Boolean))];
+  if (!ids.length) return map;
+  await ensurePlatformSubscriptionSchema();
+  for (const id of ids) {
+    map.set(id, { courseCategoryIds: [], libraryCategoryIds: [], externalTrainingIds: [] });
+  }
+  try {
+    // جلب لكل خطة لتوافق Neon tagged templates
+    for (const planId of ids) {
+      const rows = await sql`
+        SELECT content_kind, target_id
+        FROM "SubscriptionPlanCoverage"
+        WHERE plan_id = ${planId}
+      `;
+      const entry = map.get(planId)!;
+      for (const r of rows as Record<string, unknown>[]) {
+        const tid = String(r.target_id ?? "").trim();
+        if (!tid) continue;
+        const kind = String(r.content_kind ?? "");
+        if (kind === "courses") entry.courseCategoryIds.push(tid);
+        else if (kind === "library") entry.libraryCategoryIds.push(tid);
+        else if (kind === "external") entry.externalTrainingIds.push(tid);
+      }
+    }
+  } catch {
+    /* coverage table may lag */
+  }
+  return map;
+}
+
+export async function setSubscriptionPlanCoverage(
+  planId: string,
+  data: {
+    courseCategoryIds?: string[];
+    libraryCategoryIds?: string[];
+    externalTrainingIds?: string[];
+  },
+): Promise<void> {
+  const pid = planId.trim();
+  if (!pid) return;
+  await ensurePlatformSubscriptionSchema();
+  const courses = [...new Set((data.courseCategoryIds ?? []).map((x) => x.trim()).filter(Boolean))];
+  const library = [...new Set((data.libraryCategoryIds ?? []).map((x) => x.trim()).filter(Boolean))];
+  const external = [...new Set((data.externalTrainingIds ?? []).map((x) => x.trim()).filter(Boolean))];
+
+  await sql`DELETE FROM "SubscriptionPlanCoverage" WHERE plan_id = ${pid}`;
+  for (const tid of courses) {
+    await sql`
+      INSERT INTO "SubscriptionPlanCoverage" (plan_id, content_kind, target_id)
+      VALUES (${pid}, 'courses', ${tid})
+      ON CONFLICT DO NOTHING
+    `;
+  }
+  for (const tid of library) {
+    await sql`
+      INSERT INTO "SubscriptionPlanCoverage" (plan_id, content_kind, target_id)
+      VALUES (${pid}, 'library', ${tid})
+      ON CONFLICT DO NOTHING
+    `;
+  }
+  for (const tid of external) {
+    await sql`
+      INSERT INTO "SubscriptionPlanCoverage" (plan_id, content_kind, target_id)
+      VALUES (${pid}, 'external', ${tid})
+      ON CONFLICT DO NOTHING
+    `;
+  }
+}
+
+async function attachCoverageToPlans<T extends SubscriptionPlanPublic>(plans: T[]): Promise<T[]> {
+  if (!plans.length) return plans;
+  const cov = await listPlanCoverageByPlanIds(plans.map((p) => p.id));
+  return plans.map((p) => {
+    const c = cov.get(p.id);
+    return {
+      ...p,
+      courseCategoryIds: c?.courseCategoryIds ?? [],
+      libraryCategoryIds: c?.libraryCategoryIds ?? [],
+      externalTrainingIds: c?.externalTrainingIds ?? [],
+    };
+  });
+}
+
 function addSubscriptionDuration(from: Date, kind: SubscriptionDurationKind, durationValue = 1): Date {
   const d = new Date(from.getTime());
   const n = Math.max(1, durationValue || 1);
-  if (kind === "week") d.setUTCDate(d.getUTCDate() + 7 * n);
-  else if (kind === "month") d.setUTCDate(d.getUTCDate() + 30 * n);
-  else if (kind === "months_3") d.setUTCDate(d.getUTCDate() + 90 * n);
-  else if (kind === "months_6") d.setUTCDate(d.getUTCDate() + 180 * n);
-  else if (kind === "months_9") d.setUTCDate(d.getUTCDate() + 270 * n);
-  else if (kind === "custom_days") d.setUTCDate(d.getUTCDate() + n);
-  else d.setUTCDate(d.getUTCDate() + 365 * n);
+  const normalized = normalizeSubscriptionDurationKind(kind) ?? "year";
+  d.setUTCDate(d.getUTCDate() + subscriptionDurationDays(normalized, n));
   return d;
 }
 
@@ -3260,40 +3570,56 @@ export async function listActiveSubscriptionPlansPublic(): Promise<SubscriptionP
   try {
     await ensurePlatformSubscriptionSchema();
     const rows = await sql`
-      SELECT id, name, description, image_url, duration_kind, price
+      SELECT id, name, description, image_url, duration_kind, price,
+             discount_price, discount_percent, button_text, accent_color, badge_text, features_json, sort_order,
+             covers_courses, covers_library, covers_external_training
       FROM "SubscriptionPlan"
       WHERE is_active = true
-      ORDER BY created_at DESC
+      ORDER BY sort_order ASC, created_at DESC
     `;
-    return (rows as Record<string, unknown>[]).map((r) => ({
-      id: String(r.id),
-      name: String(r.name ?? ""),
-      description: String(r.description ?? ""),
-      imageUrl: r.image_url ? String(r.image_url) : null,
-      durationKind: String(r.duration_kind) as SubscriptionDurationKind,
-      price: Number(r.price ?? 0),
-    }));
+    const plans = (rows as Record<string, unknown>[]).map((r) => mapSubscriptionPlanRow(r, false));
+    return attachCoverageToPlans(plans);
   } catch {
-    return [];
+    try {
+      const rows = await sql`
+        SELECT id, name, description, image_url, duration_kind, price, sort_order
+        FROM "SubscriptionPlan"
+        WHERE is_active = true
+        ORDER BY sort_order ASC, created_at DESC
+      `;
+      const plans = (rows as Record<string, unknown>[]).map((r) => mapSubscriptionPlanRow(r, false));
+      return attachCoverageToPlans(plans);
+    } catch {
+      return [];
+    }
   }
 }
 
 export async function listSubscriptionPlansAll(): Promise<SubscriptionPlanAdmin[]> {
   await ensurePlatformSubscriptionSchema();
+  try {
     const rows = await sql`
-      SELECT id, name, description, image_url, duration_kind, price, is_active
+      SELECT id, name, description, image_url, duration_kind, price, is_active,
+             discount_price, discount_percent, button_text, accent_color, badge_text, features_json, sort_order,
+             covers_courses, covers_library, covers_external_training
       FROM "SubscriptionPlan"
-      ORDER BY created_at DESC
+      ORDER BY sort_order ASC, created_at DESC
     `;
-    return (rows as Record<string, unknown>[]).map((r) => ({
-      id: String(r.id),
-      name: String(r.name ?? ""),
-      description: String(r.description ?? ""),
-      imageUrl: r.image_url ? String(r.image_url) : null,
-      durationKind: String(r.duration_kind) as SubscriptionDurationKind,
-      price: Number(r.price ?? 0),
-      isActive: Boolean(r.is_active),
-    }));
+    const plans = (rows as Record<string, unknown>[]).map(
+      (r) => mapSubscriptionPlanRow(r, true) as SubscriptionPlanAdmin,
+    );
+    return attachCoverageToPlans(plans);
+  } catch {
+    const rows = await sql`
+      SELECT id, name, description, image_url, duration_kind, price, is_active, sort_order
+      FROM "SubscriptionPlan"
+      ORDER BY sort_order ASC, created_at DESC
+    `;
+    const plans = (rows as Record<string, unknown>[]).map(
+      (r) => mapSubscriptionPlanRow(r, true) as SubscriptionPlanAdmin,
+    );
+    return attachCoverageToPlans(plans);
+  }
 }
 
 export async function createSubscriptionPlan(data: {
@@ -3303,16 +3629,51 @@ export async function createSubscriptionPlan(data: {
   duration_kind: SubscriptionDurationKind;
   price: number;
   is_active?: boolean;
+  duration_value?: number;
+  discount_price?: number | null;
+  discount_percent?: number | null;
+  button_text?: string | null;
+  accent_color?: string | null;
+  badge_text?: string | null;
+  features_json?: string | null;
+  sort_order?: number;
+  covers_courses?: boolean;
+  covers_library?: boolean;
+  covers_external_training?: boolean;
+  course_category_ids?: string[];
+  library_category_ids?: string[];
+  external_training_ids?: string[];
 }): Promise<{ id: string }> {
   await ensurePlatformSubscriptionSchema();
   const id = generateId();
-  const dk = data.duration_kind;
-  const allowed: SubscriptionDurationKind[] = ["week", "month", "year", "months_3", "months_6", "months_9", "custom_days"];
-  if (!allowed.includes(dk)) throw new Error("مدة غير صالحة");
-  const durationValue = Math.max(1, Number((data as { duration_value?: number }).duration_value) || 1);
+  const dk = normalizeSubscriptionDurationKind(data.duration_kind);
+  if (!dk || !(SUBSCRIPTION_DURATION_KINDS as readonly string[]).includes(dk)) {
+    throw new Error("مدة غير صالحة");
+  }
+  const durationValue = Math.max(1, Number(data.duration_value) || 1);
+  const sortOrder = Math.max(0, Math.floor(Number(data.sort_order) || 0));
+  const discountPrice =
+    data.discount_price != null && Number.isFinite(Number(data.discount_price))
+      ? Math.max(0, Number(data.discount_price))
+      : null;
+  const discountPercent =
+    data.discount_percent != null && Number.isFinite(Number(data.discount_percent))
+      ? Math.max(0, Math.min(100, Number(data.discount_percent)))
+      : null;
+  const buttonText = data.button_text?.trim() || null;
+  const accentColor = data.accent_color?.trim() || null;
+  const badgeText = data.badge_text?.trim() || null;
+  const featuresJson = data.features_json?.trim() || null;
+  const coversCourses = data.covers_courses !== false;
+  const coversLibrary = data.covers_library !== false;
+  const coversExternal = data.covers_external_training === true;
   try {
     await sql`
-      INSERT INTO "SubscriptionPlan" (id, name, description, image_url, duration_kind, duration_value, price, is_active, sort_order)
+      INSERT INTO "SubscriptionPlan" (
+        id, name, description, image_url, duration_kind, duration_value, price, is_active, sort_order,
+        discount_price, discount_percent, button_text, accent_color, badge_text, features_json,
+        covers_courses, covers_library, covers_external_training
+      )
       VALUES (
         ${id},
         ${data.name.trim()},
@@ -3322,7 +3683,16 @@ export async function createSubscriptionPlan(data: {
         ${durationValue},
         ${Math.max(0, data.price)},
         ${data.is_active !== false},
-        0
+        ${sortOrder},
+        ${discountPrice},
+        ${discountPercent},
+        ${buttonText},
+        ${accentColor},
+        ${badgeText},
+        ${featuresJson},
+        ${coversCourses},
+        ${coversLibrary},
+        ${coversExternal}
       )
     `;
   } catch {
@@ -3336,10 +3706,27 @@ export async function createSubscriptionPlan(data: {
         ${dk},
         ${Math.max(0, data.price)},
         ${data.is_active !== false},
-        0
+        ${sortOrder}
       )
     `;
+    try {
+      await sql`
+        UPDATE "SubscriptionPlan" SET
+          covers_courses = ${coversCourses},
+          covers_library = ${coversLibrary},
+          covers_external_training = ${coversExternal},
+          duration_value = ${durationValue}
+        WHERE id = ${id}
+      `;
+    } catch {
+      /* optional */
+    }
   }
+  await setSubscriptionPlanCoverage(id, {
+    courseCategoryIds: coversCourses ? data.course_category_ids : [],
+    libraryCategoryIds: coversLibrary ? data.library_category_ids : [],
+    externalTrainingIds: coversExternal ? data.external_training_ids : [],
+  });
   return { id };
 }
 
@@ -3350,8 +3737,22 @@ export async function updateSubscriptionPlan(
     description?: string;
     image_url?: string | null;
     duration_kind?: SubscriptionDurationKind;
+    duration_value?: number;
     price?: number;
     is_active?: boolean;
+    discount_price?: number | null;
+    discount_percent?: number | null;
+    button_text?: string | null;
+    accent_color?: string | null;
+    badge_text?: string | null;
+    features_json?: string | null;
+    sort_order?: number;
+    covers_courses?: boolean;
+    covers_library?: boolean;
+    covers_external_training?: boolean;
+    course_category_ids?: string[];
+    library_category_ids?: string[];
+    external_training_ids?: string[];
   },
 ): Promise<void> {
   await ensurePlatformSubscriptionSchema();
@@ -3360,22 +3761,153 @@ export async function updateSubscriptionPlan(
     await sql`UPDATE "SubscriptionPlan" SET description = ${data.description.trim()}, updated_at = NOW() WHERE id = ${id}`;
   if (data.image_url !== undefined)
     await sql`UPDATE "SubscriptionPlan" SET image_url = ${data.image_url?.trim() || null}, updated_at = NOW() WHERE id = ${id}`;
+  if (data.features_json !== undefined) {
+    try {
+      await sql`UPDATE "SubscriptionPlan" SET features_json = ${data.features_json?.trim() || null}, updated_at = NOW() WHERE id = ${id}`;
+    } catch {
+      /* optional column */
+    }
+  }
+  if (
+    data.covers_courses !== undefined ||
+    data.covers_library !== undefined ||
+    data.covers_external_training !== undefined
+  ) {
+    try {
+      if (data.covers_courses !== undefined) {
+        await sql`UPDATE "SubscriptionPlan" SET covers_courses = ${!!data.covers_courses}, updated_at = NOW() WHERE id = ${id}`;
+      }
+      if (data.covers_library !== undefined) {
+        await sql`UPDATE "SubscriptionPlan" SET covers_library = ${!!data.covers_library}, updated_at = NOW() WHERE id = ${id}`;
+      }
+      if (data.covers_external_training !== undefined) {
+        await sql`UPDATE "SubscriptionPlan" SET covers_external_training = ${!!data.covers_external_training}, updated_at = NOW() WHERE id = ${id}`;
+      }
+    } catch {
+      /* optional */
+    }
+  }
+  if (
+    data.course_category_ids !== undefined ||
+    data.library_category_ids !== undefined ||
+    data.external_training_ids !== undefined
+  ) {
+    const currentCov = (await listPlanCoverageByPlanIds([id])).get(id);
+    const coverRows = await sql`
+      SELECT covers_courses, covers_library, covers_external_training
+      FROM "SubscriptionPlan" WHERE id = ${id} LIMIT 1
+    `;
+    const cr = (coverRows as Record<string, unknown>[])[0];
+    const coversCourses =
+      data.covers_courses !== undefined
+        ? !!data.covers_courses
+        : cr
+          ? cr.covers_courses !== false && cr.covers_courses !== "f"
+          : true;
+    const coversLibrary =
+      data.covers_library !== undefined
+        ? !!data.covers_library
+        : cr
+          ? cr.covers_library !== false && cr.covers_library !== "f"
+          : true;
+    const coversExternal =
+      data.covers_external_training !== undefined
+        ? !!data.covers_external_training
+        : cr
+          ? cr.covers_external_training === true || cr.covers_external_training === "t"
+          : false;
+    await setSubscriptionPlanCoverage(id, {
+      courseCategoryIds:
+        data.course_category_ids !== undefined
+          ? coversCourses
+            ? data.course_category_ids
+            : []
+          : coversCourses
+            ? (currentCov?.courseCategoryIds ?? [])
+            : [],
+      libraryCategoryIds:
+        data.library_category_ids !== undefined
+          ? coversLibrary
+            ? data.library_category_ids
+            : []
+          : coversLibrary
+            ? (currentCov?.libraryCategoryIds ?? [])
+            : [],
+      externalTrainingIds:
+        data.external_training_ids !== undefined
+          ? coversExternal
+            ? data.external_training_ids
+            : []
+          : coversExternal
+            ? (currentCov?.externalTrainingIds ?? [])
+            : [],
+    });
+  }
   if (data.duration_kind !== undefined) {
     const dk = data.duration_kind;
-    const allowed: SubscriptionDurationKind[] = ["week", "month", "year", "months_3", "months_6", "months_9", "custom_days"];
-    if (!allowed.includes(dk)) throw new Error("مدة غير صالحة");
-    await sql`UPDATE "SubscriptionPlan" SET duration_kind = ${dk}, updated_at = NOW() WHERE id = ${id}`;
+    const normalized = normalizeSubscriptionDurationKind(dk);
+    if (!normalized) throw new Error("مدة غير صالحة");
+    await sql`UPDATE "SubscriptionPlan" SET duration_kind = ${normalized}, updated_at = NOW() WHERE id = ${id}`;
   }
-  if ((data as { duration_value?: number }).duration_value !== undefined) {
-    const dv = Math.max(1, Number((data as { duration_value?: number }).duration_value) || 1);
+  if (data.duration_value !== undefined) {
+    const dv = Math.max(1, Number(data.duration_value) || 1);
     try {
       await sql`UPDATE "SubscriptionPlan" SET duration_value = ${dv}, updated_at = NOW() WHERE id = ${id}`;
     } catch {
-      /* العمود قد لا يكون موجوداً بعد */
+      /* optional column */
     }
   }
   if (data.price !== undefined) await sql`UPDATE "SubscriptionPlan" SET price = ${Math.max(0, data.price)}, updated_at = NOW() WHERE id = ${id}`;
   if (data.is_active !== undefined) await sql`UPDATE "SubscriptionPlan" SET is_active = ${data.is_active}, updated_at = NOW() WHERE id = ${id}`;
+  if (data.discount_price !== undefined) {
+    const v =
+      data.discount_price == null || data.discount_price === ("" as unknown)
+        ? null
+        : Math.max(0, Number(data.discount_price));
+    const normalized = v != null && Number.isFinite(v) ? v : null;
+    try {
+      await sql`UPDATE "SubscriptionPlan" SET discount_price = ${normalized}, updated_at = NOW() WHERE id = ${id}`;
+    } catch {
+      /* optional column */
+    }
+  }
+  if (data.discount_percent !== undefined) {
+    const v =
+      data.discount_percent == null
+        ? null
+        : Math.max(0, Math.min(100, Number(data.discount_percent)));
+    const normalized = v != null && Number.isFinite(v) ? v : null;
+    try {
+      await sql`UPDATE "SubscriptionPlan" SET discount_percent = ${normalized}, updated_at = NOW() WHERE id = ${id}`;
+    } catch {
+      /* optional column */
+    }
+  }
+  if (data.button_text !== undefined) {
+    try {
+      await sql`UPDATE "SubscriptionPlan" SET button_text = ${data.button_text?.trim() || null}, updated_at = NOW() WHERE id = ${id}`;
+    } catch {
+      /* optional column */
+    }
+  }
+  if (data.accent_color !== undefined) {
+    try {
+      await sql`UPDATE "SubscriptionPlan" SET accent_color = ${data.accent_color?.trim() || null}, updated_at = NOW() WHERE id = ${id}`;
+    } catch {
+      /* optional column */
+    }
+  }
+  if (data.badge_text !== undefined) {
+    try {
+      await sql`UPDATE "SubscriptionPlan" SET badge_text = ${data.badge_text?.trim() || null}, updated_at = NOW() WHERE id = ${id}`;
+    } catch {
+      /* optional column */
+    }
+  }
+  if (data.sort_order !== undefined) {
+    const so = Math.max(0, Math.floor(Number(data.sort_order) || 0));
+    await sql`UPDATE "SubscriptionPlan" SET sort_order = ${so}, updated_at = NOW() WHERE id = ${id}`;
+  }
 }
 
 export async function deleteSubscriptionPlan(id: string): Promise<void> {
@@ -3391,6 +3923,12 @@ export async function getSubscriptionPlanById(id: string): Promise<{
   duration_kind: SubscriptionDurationKind;
   duration_value: number;
   price: number;
+  discount_price: number | null;
+  discount_percent: number | null;
+  button_text: string | null;
+  accent_color: string | null;
+  badge_text: string | null;
+  sort_order: number;
   is_active: boolean;
 } | null> {
   await ensurePlatformSubscriptionSchema();
@@ -3402,9 +3940,19 @@ export async function getSubscriptionPlanById(id: string): Promise<{
     name: String(r.name ?? ""),
     description: String(r.description ?? ""),
     image_url: r.image_url ? String(r.image_url) : null,
-    duration_kind: String(r.duration_kind) as SubscriptionDurationKind,
+    duration_kind:
+      normalizeSubscriptionDurationKind(String(r.duration_kind)) ??
+      (String(r.duration_kind) as SubscriptionDurationKind),
     duration_value: Number(r.duration_value ?? 1) || 1,
     price: Number(r.price ?? 0),
+    discount_price:
+      r.discount_price != null && r.discount_price !== "" ? Number(r.discount_price) : null,
+    discount_percent:
+      r.discount_percent != null && r.discount_percent !== "" ? Number(r.discount_percent) : null,
+    button_text: r.button_text != null && String(r.button_text).trim() !== "" ? String(r.button_text).trim() : null,
+    accent_color: r.accent_color != null && String(r.accent_color).trim() !== "" ? String(r.accent_color).trim() : null,
+    badge_text: r.badge_text != null && String(r.badge_text).trim() !== "" ? String(r.badge_text).trim() : null,
+    sort_order: Number(r.sort_order ?? 0) || 0,
     is_active: Boolean(r.is_active),
   };
 }
@@ -3424,16 +3972,10 @@ export async function userHasActivePlatformSubscription(userId: string): Promise
   }
 }
 
-/** اشتراك نشط + دورة منشورة + سعرها > 0 ⇒ وصول كامل كمسجّل */
+/** اشتراك نشط يغطي تصنيف الدورة (+ دورة منشورة مدفوعة أو subscription_only) */
 export async function userHasActivePlatformSubscriptionForPaidCourse(userId: string, courseId: string): Promise<boolean> {
-  const active = await userHasActivePlatformSubscription(userId);
-  if (!active) return false;
-  const course = await getCourseById(courseId);
-  if (!course) return false;
-  const pub = (course as { isPublished?: boolean }).isPublished ?? (course as { is_published?: boolean }).is_published;
-  if (!pub) return false;
-  const price = Number((course as { price?: unknown }).price) || 0;
-  return price > 0;
+  const { userCanAccessCourseViaSubscription } = await import("./subscription-access");
+  return userCanAccessCourseViaSubscription(userId, courseId);
 }
 
 /** تسجيل في الدورة (غير منتهٍ) أو اشتراك منصة نشط على دورة مدفوعة منشورة */
@@ -3457,11 +3999,23 @@ export async function getLatestPlatformSubscriptionExpiry(userId: string): Promi
   }
 }
 
-export async function purchasePlatformSubscription(userId: string, planId: string): Promise<{ expiresAt: Date }> {
+export async function purchasePlatformSubscription(
+  userId: string,
+  planId: string,
+  opts?: { priceOverride?: number },
+): Promise<{ expiresAt: Date; pricePaid: number }> {
   await ensurePlatformSubscriptionSchema();
   const plan = await getSubscriptionPlanById(planId);
   if (!plan || !plan.is_active) throw new Error("الباقة غير متاحة");
-  const price = plan.price;
+  const basePrice = resolveSubscriptionPlanPricing({
+    price: plan.price,
+    discountPrice: plan.discount_price,
+    discountPercent: plan.discount_percent,
+  }).chargePrice;
+  const price =
+    opts?.priceOverride != null && Number.isFinite(opts.priceOverride)
+      ? Math.max(0, Number(opts.priceOverride))
+      : basePrice;
   const user = await getUserById(userId);
   if (!user) throw new Error("المستخدم غير موجود");
   if (user.role !== "STUDENT") throw new Error("الاشتراك متاح للطلاب فقط");
@@ -3476,8 +4030,16 @@ export async function purchasePlatformSubscription(userId: string, planId: strin
     const expiresAt = addSubscriptionDuration(from, plan.duration_kind, durationValue);
     const subId = generateId();
     if (price > 0) {
-      const newBal = String(Math.max(0, balance - price));
-      await updateUser(userId, { balance: newBal });
+      const { adjustWalletBalance } = await import("./wallet");
+      await adjustWalletBalance({
+        userId,
+        amount: -price,
+        type: "purchase",
+        reason: `Subscription renewal: ${plan.name}`,
+        referenceType: "subscription_plan",
+        referenceId: planId,
+        createdBy: userId,
+      });
     }
     await sql`
       INSERT INTO "UserPlatformSubscription" (id, user_id, plan_id, price_paid, expires_at)
@@ -3495,7 +4057,7 @@ export async function purchasePlatformSubscription(userId: string, planId: strin
     } catch {
       /* اختياري */
     }
-    return { expiresAt };
+    return { expiresAt, pricePaid: price };
   }
 
   const balance = Number(user.balance) || 0;
@@ -3507,12 +4069,47 @@ export async function purchasePlatformSubscription(userId: string, planId: strin
 
   const subId = generateId();
   if (price > 0) {
-    const newBal = String(Math.max(0, balance - price));
-    await updateUser(userId, { balance: newBal });
+    const { adjustWalletBalance } = await import("./wallet");
+    await adjustWalletBalance({
+      userId,
+      amount: -price,
+      type: "purchase",
+      reason: `Subscription purchase: ${plan.name}`,
+      referenceType: "subscription_plan",
+      referenceId: planId,
+      createdBy: userId,
+    });
   }
   await sql`
     INSERT INTO "UserPlatformSubscription" (id, user_id, plan_id, price_paid, expires_at)
     VALUES (${subId}, ${userId}, ${planId}, ${price}, ${expiresAt})
+  `;
+  return { expiresAt, pricePaid: price };
+}
+
+/** منح اشتراك منصة مجاني (من كود تفعيل) — بدون خصم رصيد */
+export async function grantFreePlatformSubscription(
+  userId: string,
+  planId: string,
+): Promise<{ expiresAt: Date }> {
+  await ensurePlatformSubscriptionSchema();
+  const plan = await getSubscriptionPlanById(planId);
+  if (!plan || !plan.is_active) throw new Error("الباقة غير متاحة");
+  const user = await getUserById(userId);
+  if (!user) throw new Error("المستخدم غير موجود");
+  if (user.role !== "STUDENT") throw new Error("الاشتراك متاح للطلاب فقط");
+
+  const durationValue = Number(plan.duration_value) || 1;
+  let from = new Date();
+  if (await userHasActivePlatformSubscription(userId)) {
+    const currentExp = await getLatestPlatformSubscriptionExpiry(userId);
+    if (currentExp && currentExp.getTime() > Date.now()) from = currentExp;
+  }
+  const expiresAt = addSubscriptionDuration(from, plan.duration_kind, durationValue);
+  const subId = generateId();
+  await sql`
+    INSERT INTO "UserPlatformSubscription" (id, user_id, plan_id, price_paid, expires_at)
+    VALUES (${subId}, ${userId}, ${planId}, 0, ${expiresAt})
   `;
   return { expiresAt };
 }
@@ -3587,6 +4184,7 @@ export async function deleteUserPlatformSubscriptionById(id: string): Promise<vo
 }
 
 let lessonRatingsSchemaAvailable = true;
+let courseRatingsSchemaAvailable = true;
 
 async function ensureLessonRatingsSchema(): Promise<void> {
   return ensureOnce("ensureLessonRatingsSchema", async () => {
@@ -3615,25 +4213,56 @@ async function ensureLessonRatingsSchema(): Promise<void> {
         lessonRatingsSchemaAvailable = false;
       }
     }
+    /* متوسط بطاقة الكورس يعتمد على CourseRating — نجهّزه مع تقييم المحاضرات */
+    await ensureCourseRatingsSchema();
+  });
+}
+
+async function ensureCourseRatingsSchema(): Promise<void> {
+  return ensureOnce("ensureCourseRatingsSchema", async () => {
+    try {
+      await sql`
+        CREATE TABLE IF NOT EXISTS "CourseRating" (
+          id TEXT PRIMARY KEY,
+          course_id TEXT NOT NULL REFERENCES "Course"(id) ON DELETE CASCADE,
+          user_id TEXT NOT NULL REFERENCES "User"(id) ON DELETE CASCADE,
+          rating INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 5),
+          comment TEXT,
+          is_hidden BOOLEAN NOT NULL DEFAULT false,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          CONSTRAINT course_rating_unique_course_user UNIQUE (course_id, user_id)
+        )
+      `;
+      await sql`CREATE INDEX IF NOT EXISTS "CourseRating_course_id_idx" ON "CourseRating"(course_id)`;
+      await sql`CREATE INDEX IF NOT EXISTS "CourseRating_user_id_idx" ON "CourseRating"(user_id)`;
+      await sql`CREATE INDEX IF NOT EXISTS "CourseRating_hidden_idx" ON "CourseRating"(is_hidden, created_at DESC)`;
+      courseRatingsSchemaAvailable = true;
+    } catch {
+      try {
+        await sql`SELECT 1 FROM "CourseRating" LIMIT 1`;
+        courseRatingsSchemaAvailable = true;
+      } catch {
+        courseRatingsSchemaAvailable = false;
+      }
+    }
   });
 }
 
 function courseRatingSelectSql() {
-  if (!lessonRatingsSchemaAvailable) {
+  if (!courseRatingsSchemaAvailable) {
     return sql`NULL::numeric AS course_rating, 0::int AS course_rating_count`;
   }
   return sql`
     (
-      SELECT ROUND(AVG(lr.rating)::numeric, 2)
-      FROM "LessonRating" lr
-      JOIN "Lesson" l ON l.id = lr.lesson_id
-      WHERE l.course_id = c.id
+      SELECT ROUND(AVG(cr.rating)::numeric, 2)
+      FROM "CourseRating" cr
+      WHERE cr.course_id = c.id AND (cr.is_hidden IS NULL OR cr.is_hidden = false)
     ) AS course_rating,
     (
       SELECT COUNT(*)::int
-      FROM "LessonRating" lr
-      JOIN "Lesson" l ON l.id = lr.lesson_id
-      WHERE l.course_id = c.id
+      FROM "CourseRating" cr
+      WHERE cr.course_id = c.id AND (cr.is_hidden IS NULL OR cr.is_hidden = false)
     ) AS course_rating_count
   `;
 }
@@ -3851,7 +4480,9 @@ export async function listTeachersHomepagePreviewOnly(
     let rows = await sql`
       SELECT id, name, teacher_subject, teacher_avatar_url, created_at, teacher_homepage_order
       FROM "User"
-      WHERE role = 'TEACHER' AND teacher_homepage_order IS NOT NULL
+      WHERE role = 'TEACHER'
+        AND COALESCE(teacher_visible_on_homepage, true) = true
+        AND teacher_homepage_order IS NOT NULL
       ORDER BY teacher_homepage_order ASC
       LIMIT ${limit}
     `;
@@ -3860,6 +4491,7 @@ export async function listTeachersHomepagePreviewOnly(
         SELECT id, name, teacher_subject, teacher_avatar_url, created_at, teacher_homepage_order
         FROM "User"
         WHERE role = 'TEACHER'
+          AND COALESCE(teacher_visible_on_homepage, true) = true
         ORDER BY name ASC
         LIMIT ${limit}
       `;
@@ -4124,6 +4756,7 @@ export async function updateCourse(
     short_desc_en?: string | null;
     image_url?: string | null;
     price?: number;
+    compare_at_price?: number | null;
     duration?: string | null;
     level?: string | null;
     is_published?: boolean;
@@ -4141,6 +4774,14 @@ export async function updateCourse(
   if (data.short_desc_en !== undefined) await sql`UPDATE "Course" SET short_desc_en = ${data.short_desc_en}, updated_at = NOW() WHERE id = ${id}`;
   if (data.image_url !== undefined) await sql`UPDATE "Course" SET image_url = ${data.image_url}, updated_at = NOW() WHERE id = ${id}`;
   if (data.price !== undefined) await sql`UPDATE "Course" SET price = ${data.price}, updated_at = NOW() WHERE id = ${id}`;
+  if (data.compare_at_price !== undefined) {
+    try {
+      await sql`ALTER TABLE "Course" ADD COLUMN IF NOT EXISTS compare_at_price NUMERIC(12,2)`;
+      await sql`UPDATE "Course" SET compare_at_price = ${data.compare_at_price}, updated_at = NOW() WHERE id = ${id}`;
+    } catch {
+      /* noop */
+    }
+  }
   if (data.duration !== undefined) await sql`UPDATE "Course" SET duration = ${data.duration}, updated_at = NOW() WHERE id = ${id}`;
   if (data.level !== undefined) await sql`UPDATE "Course" SET level = ${data.level}, updated_at = NOW() WHERE id = ${id}`;
   if (data.is_published !== undefined) await sql`UPDATE "Course" SET is_published = ${data.is_published}, updated_at = NOW() WHERE id = ${id}`;
@@ -4387,23 +5028,57 @@ export async function createLesson(data: {
   pdf_url?: string | null;
   order: number;
   accepts_homework?: boolean;
+  is_preview?: boolean;
+  section_id?: string | null;
 }): Promise<Lesson> {
   const id = generateId();
   const acceptsHomework = data.accepts_homework ?? false;
+  const isPreview = data.is_preview ?? false;
+  const sectionId = data.section_id ?? null;
+  try {
+    await sql`ALTER TABLE "Lesson" ADD COLUMN IF NOT EXISTS is_preview BOOLEAN NOT NULL DEFAULT false`;
+  } catch {
+    /* noop */
+  }
   try {
     await sql`
-      INSERT INTO "Lesson" (id, course_id, title, title_ar, slug, content, video_url, pdf_url, "order", accepts_homework)
-      VALUES (${id}, ${data.course_id}, ${data.title}, ${data.title_ar ?? null}, ${data.slug}, ${data.content ?? null}, ${data.video_url ?? null}, ${data.pdf_url ?? null}, ${data.order}, ${acceptsHomework})
+      INSERT INTO "Lesson" (id, course_id, title, title_ar, slug, content, video_url, pdf_url, "order", accepts_homework, is_preview, section_id)
+      VALUES (${id}, ${data.course_id}, ${data.title}, ${data.title_ar ?? null}, ${data.slug}, ${data.content ?? null}, ${data.video_url ?? null}, ${data.pdf_url ?? null}, ${data.order}, ${acceptsHomework}, ${isPreview}, ${sectionId})
     `;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    const columnMissing = msg.includes("accepts_homework") || (msg.includes("column") && msg.includes("does not exist"));
-    if (columnMissing) {
-      await sql`ALTER TABLE "Lesson" ADD COLUMN IF NOT EXISTS accepts_homework BOOLEAN NOT NULL DEFAULT false`;
-      await sql`
-        INSERT INTO "Lesson" (id, course_id, title, title_ar, slug, content, video_url, pdf_url, "order", accepts_homework)
-        VALUES (${id}, ${data.course_id}, ${data.title}, ${data.title_ar ?? null}, ${data.slug}, ${data.content ?? null}, ${data.video_url ?? null}, ${data.pdf_url ?? null}, ${data.order}, ${acceptsHomework})
-      `;
+    const columnMissing = msg.includes("column") && msg.includes("does not exist");
+    if (columnMissing || msg.includes("accepts_homework") || msg.includes("is_preview") || msg.includes("section_id")) {
+      try {
+        await sql`ALTER TABLE "Lesson" ADD COLUMN IF NOT EXISTS accepts_homework BOOLEAN NOT NULL DEFAULT false`;
+        await sql`ALTER TABLE "Lesson" ADD COLUMN IF NOT EXISTS is_preview BOOLEAN NOT NULL DEFAULT false`;
+        await sql`ALTER TABLE "Lesson" ADD COLUMN IF NOT EXISTS section_id TEXT`;
+      } catch {
+        /* noop */
+      }
+      try {
+        await sql`
+          INSERT INTO "Lesson" (id, course_id, title, title_ar, slug, content, video_url, pdf_url, "order", accepts_homework, is_preview, section_id)
+          VALUES (${id}, ${data.course_id}, ${data.title}, ${data.title_ar ?? null}, ${data.slug}, ${data.content ?? null}, ${data.video_url ?? null}, ${data.pdf_url ?? null}, ${data.order}, ${acceptsHomework}, ${isPreview}, ${sectionId})
+        `;
+      } catch {
+        await sql`
+          INSERT INTO "Lesson" (id, course_id, title, title_ar, slug, content, video_url, pdf_url, "order", accepts_homework)
+          VALUES (${id}, ${data.course_id}, ${data.title}, ${data.title_ar ?? null}, ${data.slug}, ${data.content ?? null}, ${data.video_url ?? null}, ${data.pdf_url ?? null}, ${data.order}, ${acceptsHomework})
+        `;
+        try {
+          await sql`UPDATE "Lesson" SET is_preview = ${isPreview} WHERE id = ${id}`;
+        } catch {
+          /* noop */
+        }
+        if (sectionId) {
+          try {
+            await sql`UPDATE "Lesson" SET section_id = ${sectionId} WHERE id = ${id}`;
+          } catch {
+            /* noop */
+          }
+        }
+      }
     } else throw err;
   }
   const l = await getLessonById(id);
@@ -4445,6 +5120,12 @@ export async function getCourseWithContent(segment: string): Promise<{
     await ensureLmsSpecSchema();
   } catch {
     /* عمود is_visible قد لا يكون جاهزاً بعد */
+  }
+  try {
+    const { ensureLmsFeaturesSchema } = await import("./lms-features-db");
+    await ensureLmsFeaturesSchema();
+  } catch {
+    /* compare_at_price / is_preview */
   }
   let lessonRows: Record<string, unknown>[];
   try {
@@ -4699,7 +5380,48 @@ export async function deleteEnrollment(userId: string, courseId: string): Promis
   await sql`DELETE FROM "Enrollment" WHERE user_id = ${userId} AND course_id = ${courseId}`;
 }
 
-// ----- ActivationCode (أكواد التفعيل المجانية للدورات) -----
+// ----- ActivationCode (أكواد التفعيل المجانية — كورس أو اشتراك) -----
+let activationCodeSchemaEnsured = false;
+
+async function ensureActivationCodeSchema(): Promise<void> {
+  if (activationCodeSchemaEnsured) return;
+  try {
+    await sql`
+      CREATE TABLE IF NOT EXISTS "ActivationCode" (
+        id TEXT PRIMARY KEY,
+        course_id TEXT REFERENCES "Course"(id) ON DELETE CASCADE,
+        code TEXT NOT NULL UNIQUE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        used_at TIMESTAMPTZ,
+        used_by_user_id TEXT REFERENCES "User"(id) ON DELETE SET NULL
+      )
+    `;
+    try {
+      await sql`ALTER TABLE "ActivationCode" ALTER COLUMN course_id DROP NOT NULL`;
+    } catch {
+      /* already nullable */
+    }
+    await sql`ALTER TABLE "ActivationCode" ADD COLUMN IF NOT EXISTS target_type TEXT NOT NULL DEFAULT 'course'`;
+    await sql`ALTER TABLE "ActivationCode" ADD COLUMN IF NOT EXISTS plan_id TEXT`;
+    await sql`ALTER TABLE "ActivationCode" ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ`;
+    await sql`ALTER TABLE "ActivationCode" ADD COLUMN IF NOT EXISTS max_uses INT NOT NULL DEFAULT 1`;
+    await sql`ALTER TABLE "ActivationCode" ADD COLUMN IF NOT EXISTS used_count INT NOT NULL DEFAULT 0`;
+    await sql`
+      CREATE TABLE IF NOT EXISTS "ActivationCodeRedemption" (
+        id TEXT PRIMARY KEY,
+        activation_code_id TEXT NOT NULL REFERENCES "ActivationCode"(id) ON DELETE CASCADE,
+        user_id TEXT NOT NULL REFERENCES "User"(id) ON DELETE CASCADE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (activation_code_id, user_id)
+      )
+    `;
+    await sql`CREATE INDEX IF NOT EXISTS "ActivationCodeRedemption_code_idx" ON "ActivationCodeRedemption"(activation_code_id)`;
+    activationCodeSchemaEnsured = true;
+  } catch {
+    /* schema may lag */
+  }
+}
+
 function generateCodeString(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   let s = "";
@@ -4707,29 +5429,82 @@ function generateCodeString(): string {
   return s;
 }
 
+export type CreateActivationCodesInput = {
+  targetType: "course" | "subscription";
+  courseId?: string | null;
+  planId?: string | null;
+  count: number;
+  lessonIds?: string[] | null;
+  quizIds?: string[] | null;
+  expiresAt?: string | Date | null;
+  maxUses?: number;
+};
+
 export async function createActivationCodes(
-  courseId: string,
-  count: number,
-  lessonIds?: string[] | null,
-  quizIds?: string[] | null
+  courseIdOrOpts: string | CreateActivationCodesInput,
+  countMaybe?: number,
+  lessonIdsMaybe?: string[] | null,
+  quizIdsMaybe?: string[] | null,
 ): Promise<{ id: string; code: string }[]> {
+  await ensureActivationCodeSchema();
+  const opts: CreateActivationCodesInput =
+    typeof courseIdOrOpts === "string"
+      ? {
+          targetType: "course",
+          courseId: courseIdOrOpts,
+          count: countMaybe ?? 1,
+          lessonIds: lessonIdsMaybe,
+          quizIds: quizIdsMaybe,
+          maxUses: 1,
+        }
+      : courseIdOrOpts;
+
+  const targetType = opts.targetType === "subscription" ? "subscription" : "course";
+  const courseId = opts.courseId?.trim() || null;
+  const planId = opts.planId?.trim() || null;
+  if (targetType === "course" && !courseId) throw new Error("معرف الدورة مطلوب");
+  if (targetType === "subscription" && !planId) throw new Error("معرف باقة الاشتراك مطلوب");
+
+  const count = Math.min(Math.max(Number(opts.count) || 1, 1), 500);
+  const maxUses = Math.max(1, Math.floor(Number(opts.maxUses) || 1));
+  const expiresAt =
+    opts.expiresAt != null && String(opts.expiresAt).trim() !== ""
+      ? new Date(opts.expiresAt)
+      : null;
+  if (expiresAt && Number.isNaN(expiresAt.getTime())) throw new Error("تاريخ صلاحية غير صالح");
+
   const created: { id: string; code: string }[] = [];
   const seen = new Set<string>();
-  const scopedLessonIds = Array.isArray(lessonIds)
-    ? Array.from(new Set(lessonIds.filter((x) => typeof x === "string" && x.trim()).map((x) => x.trim())))
-    : [];
-  const scopedQuizIds = Array.isArray(quizIds)
-    ? Array.from(new Set(quizIds.filter((x) => typeof x === "string" && x.trim()).map((x) => x.trim())))
-    : [];
+  const scopedLessonIds =
+    targetType === "course" && Array.isArray(opts.lessonIds)
+      ? Array.from(new Set(opts.lessonIds.filter((x) => typeof x === "string" && x.trim()).map((x) => x.trim())))
+      : [];
+  const scopedQuizIds =
+    targetType === "course" && Array.isArray(opts.quizIds)
+      ? Array.from(new Set(opts.quizIds.filter((x) => typeof x === "string" && x.trim()).map((x) => x.trim())))
+      : [];
+
   for (let i = 0; i < count; i++) {
     let code = generateCodeString();
     while (seen.has(code)) code = generateCodeString();
     seen.add(code);
     const id = generateId();
-    await sql`
-      INSERT INTO "ActivationCode" (id, course_id, code, used_at, used_by_user_id)
-      VALUES (${id}, ${courseId}, ${code}, NULL, NULL)
-    `;
+    try {
+      await sql`
+        INSERT INTO "ActivationCode" (
+          id, course_id, plan_id, target_type, code, used_at, used_by_user_id, expires_at, max_uses, used_count
+        )
+        VALUES (
+          ${id}, ${courseId}, ${planId}, ${targetType}, ${code}, NULL, NULL, ${expiresAt}, ${maxUses}, 0
+        )
+      `;
+    } catch {
+      if (targetType !== "course" || !courseId) throw new Error("فشل إنشاء كود التفعيل");
+      await sql`
+        INSERT INTO "ActivationCode" (id, course_id, code, used_at, used_by_user_id)
+        VALUES (${id}, ${courseId}, ${code}, NULL, NULL)
+      `;
+    }
     if (scopedLessonIds.length > 0) {
       for (const lessonId of scopedLessonIds) {
         await sql`
@@ -4754,42 +5529,73 @@ export async function createActivationCodes(
 }
 
 export type ActivationCodeWithCourse = ActivationCode & {
-  course_title?: string;
-  course_title_ar?: string;
+  courseId?: string | null;
+  planId?: string | null;
+  targetType?: "course" | "subscription";
+  courseTitle?: string;
+  courseTitleAr?: string;
+  planName?: string | null;
   lessonCount?: number;
   quizCount?: number;
+  expiresAt?: string | Date | null;
+  maxUses?: number;
+  usedCount?: number;
+  course_title?: string;
+  course_title_ar?: string;
 };
 
+function mapActivationListRow(r: Record<string, unknown>): ActivationCodeWithCourse {
+  const base = rowToCamel(r) as ActivationCodeWithCourse;
+  return {
+    ...base,
+    courseId: r.course_id != null ? String(r.course_id) : null,
+    planId: r.plan_id != null ? String(r.plan_id) : null,
+    targetType: String(r.target_type ?? "course") === "subscription" ? "subscription" : "course",
+    courseTitle: r.course_title != null ? String(r.course_title) : undefined,
+    courseTitleAr: r.course_title_ar != null ? String(r.course_title_ar) : undefined,
+    planName: r.plan_name != null ? String(r.plan_name) : null,
+    lessonCount: Number(r.lesson_count ?? 0) || 0,
+    quizCount: Number(r.quiz_count ?? 0) || 0,
+    maxUses: Number(r.max_uses ?? 1) || 1,
+    usedCount: Number(r.used_count ?? 0) || 0,
+    expiresAt: r.expires_at != null ? (r.expires_at as Date | string) : null,
+  };
+}
+
 export async function listActivationCodes(courseId?: string | null): Promise<ActivationCodeWithCourse[]> {
+  await ensureActivationCodeSchema();
   const rows = courseId
     ? await sql`
-        SELECT ac.*, c.title as course_title, c.title_ar as course_title_ar,
+        SELECT ac.*, c.title as course_title, c.title_ar as course_title_ar, sp.name as plan_name,
                (SELECT COUNT(*)::int FROM "ActivationCodeLesson" acl WHERE acl.activation_code_id = ac.id) as lesson_count,
                (SELECT COUNT(*)::int FROM "ActivationCodeQuiz" acq WHERE acq.activation_code_id = ac.id) as quiz_count
         FROM "ActivationCode" ac
-        JOIN "Course" c ON c.id = ac.course_id
+        LEFT JOIN "Course" c ON c.id = ac.course_id
+        LEFT JOIN "SubscriptionPlan" sp ON sp.id = ac.plan_id
         WHERE ac.course_id = ${courseId}
         ORDER BY ac.created_at DESC
       `
     : await sql`
-        SELECT ac.*, c.title as course_title, c.title_ar as course_title_ar,
+        SELECT ac.*, c.title as course_title, c.title_ar as course_title_ar, sp.name as plan_name,
                (SELECT COUNT(*)::int FROM "ActivationCodeLesson" acl WHERE acl.activation_code_id = ac.id) as lesson_count,
                (SELECT COUNT(*)::int FROM "ActivationCodeQuiz" acq WHERE acq.activation_code_id = ac.id) as quiz_count
         FROM "ActivationCode" ac
-        JOIN "Course" c ON c.id = ac.course_id
+        LEFT JOIN "Course" c ON c.id = ac.course_id
+        LEFT JOIN "SubscriptionPlan" sp ON sp.id = ac.plan_id
         ORDER BY ac.created_at DESC
       `;
-  return (rows as Record<string, unknown>[]).map((r) => rowToCamel(r) as ActivationCodeWithCourse);
+  return (rows as Record<string, unknown>[]).map(mapActivationListRow);
 }
 
 export async function listActivationCodesForTeacher(
   teacherId: string,
-  courseId?: string | null
+  courseId?: string | null,
 ): Promise<ActivationCodeWithCourse[]> {
+  await ensureActivationCodeSchema();
   const cid = courseId?.trim() || null;
   const rows = cid
     ? await sql`
-        SELECT ac.*, c.title as course_title, c.title_ar as course_title_ar,
+        SELECT ac.*, c.title as course_title, c.title_ar as course_title_ar, NULL::text as plan_name,
                (SELECT COUNT(*)::int FROM "ActivationCodeLesson" acl WHERE acl.activation_code_id = ac.id) as lesson_count,
                (SELECT COUNT(*)::int FROM "ActivationCodeQuiz" acq WHERE acq.activation_code_id = ac.id) as quiz_count
         FROM "ActivationCode" ac
@@ -4798,47 +5604,148 @@ export async function listActivationCodesForTeacher(
         ORDER BY ac.created_at DESC
       `
     : await sql`
-        SELECT ac.*, c.title as course_title, c.title_ar as course_title_ar,
+        SELECT ac.*, c.title as course_title, c.title_ar as course_title_ar, NULL::text as plan_name,
                (SELECT COUNT(*)::int FROM "ActivationCodeLesson" acl WHERE acl.activation_code_id = ac.id) as lesson_count,
                (SELECT COUNT(*)::int FROM "ActivationCodeQuiz" acq WHERE acq.activation_code_id = ac.id) as quiz_count
         FROM "ActivationCode" ac
         JOIN "Course" c ON c.id = ac.course_id AND c.created_by_id = ${teacherId}
         ORDER BY ac.created_at DESC
       `;
-  return (rows as Record<string, unknown>[]).map((r) => rowToCamel(r) as ActivationCodeWithCourse);
+  return (rows as Record<string, unknown>[]).map(mapActivationListRow);
 }
 
-export async function getActivationCodeByCode(code: string): Promise<(ActivationCode & { courseId: string; lessonIds: string[]; quizIds: string[] }) | null> {
+export type ActivationCodeLookup = {
+  id: string;
+  code: string;
+  courseId: string | null;
+  planId: string | null;
+  targetType: "course" | "subscription";
+  expiresAt: Date | null;
+  maxUses: number;
+  usedCount: number;
+  lessonIds: string[];
+  quizIds: string[];
+};
+
+export async function getActivationCodeByCode(code: string): Promise<ActivationCodeLookup | null> {
+  await ensureActivationCodeSchema();
   const trimmed = code.trim().toUpperCase();
   if (!trimmed) return null;
   const rows = await sql`
-    SELECT * FROM "ActivationCode" WHERE UPPER(TRIM(code)) = ${trimmed} AND used_at IS NULL LIMIT 1
+    SELECT * FROM "ActivationCode" WHERE UPPER(TRIM(code)) = ${trimmed} LIMIT 1
   `;
   const r = rows[0] as Record<string, unknown> | undefined;
   if (!r) return null;
-  const base = rowToCamel(r) as ActivationCode & { courseId: string };
+
+  const maxUses = Math.max(1, Number(r.max_uses ?? 1) || 1);
+  const usedCount = Math.max(0, Number(r.used_count ?? 0) || 0);
+  const expiresAt = r.expires_at ? new Date(String(r.expires_at)) : null;
+  if (expiresAt && !Number.isNaN(expiresAt.getTime()) && expiresAt.getTime() < Date.now()) {
+    return null;
+  }
+  if (usedCount >= maxUses) return null;
+
+  // توافق مع الأكواد القديمة ذات الاستخدام الواحد عبر used_at
+  if (usedCount === 0 && r.used_at != null && maxUses <= 1) return null;
+
+  const codeId = String(r.id);
+  let lessonIds: string[] = [];
+  let quizIds: string[] = [];
   try {
-    const codeId = String((r as { id?: string }).id ?? "");
     const lessonRows = await sql`SELECT lesson_id FROM "ActivationCodeLesson" WHERE activation_code_id = ${codeId}`;
     const quizRows = await sql`SELECT quiz_id FROM "ActivationCodeQuiz" WHERE activation_code_id = ${codeId}`;
-    const lessonIds = (lessonRows as { lesson_id?: string }[]).map((x) => String(x.lesson_id ?? "")).filter(Boolean);
-    const quizIds = (quizRows as { quiz_id?: string }[]).map((x) => String(x.quiz_id ?? "")).filter(Boolean);
-    return { ...base, lessonIds, quizIds };
+    lessonIds = (lessonRows as { lesson_id?: string }[]).map((x) => String(x.lesson_id ?? "")).filter(Boolean);
+    quizIds = (quizRows as { quiz_id?: string }[]).map((x) => String(x.quiz_id ?? "")).filter(Boolean);
   } catch {
-    return { ...base, lessonIds: [], quizIds: [] };
+    lessonIds = [];
+    quizIds = [];
   }
+
+  return {
+    id: codeId,
+    code: String(r.code ?? ""),
+    courseId: r.course_id != null ? String(r.course_id) : null,
+    planId: r.plan_id != null ? String(r.plan_id) : null,
+    targetType: String(r.target_type ?? "course") === "subscription" ? "subscription" : "course",
+    expiresAt,
+    maxUses,
+    usedCount,
+    lessonIds,
+    quizIds,
+  };
 }
 
-export async function useActivationCode(codeId: string, userId: string): Promise<{ courseId: string; lessonIds: string[]; quizIds: string[] } | null> {
-  // تحديث آمن لمنع تفعيل نفس الكود مرتين
+export async function useActivationCode(
+  codeId: string,
+  userId: string,
+): Promise<{
+  courseId: string | null;
+  planId: string | null;
+  targetType: "course" | "subscription";
+  lessonIds: string[];
+  quizIds: string[];
+  expiresAt?: Date;
+} | null> {
+  await ensureActivationCodeSchema();
+
+  const existing = await sql`
+    SELECT 1 FROM "ActivationCodeRedemption"
+    WHERE activation_code_id = ${codeId} AND user_id = ${userId}
+    LIMIT 1
+  `.catch(() => []);
+  if ((existing as unknown[]).length > 0) {
+    throw new Error("لقد استخدمت هذا الكود مسبقاً");
+  }
+
+  const rows = await sql`SELECT * FROM "ActivationCode" WHERE id = ${codeId} LIMIT 1`;
+  const r = rows[0] as Record<string, unknown> | undefined;
+  if (!r) return null;
+
+  const maxUses = Math.max(1, Number(r.max_uses ?? 1) || 1);
+  const usedCount = Math.max(0, Number(r.used_count ?? 0) || 0);
+  if (usedCount >= maxUses) return null;
+  if (r.used_at != null && maxUses <= 1 && usedCount === 0) return null;
+  const expiresAtCol = r.expires_at ? new Date(String(r.expires_at)) : null;
+  if (expiresAtCol && !Number.isNaN(expiresAtCol.getTime()) && expiresAtCol.getTime() < Date.now()) {
+    throw new Error("انتهت صلاحية هذا الكود");
+  }
+
+  const targetType = String(r.target_type ?? "course") === "subscription" ? "subscription" : "course";
+  const courseId = r.course_id != null ? String(r.course_id) : null;
+  const planId = r.plan_id != null ? String(r.plan_id) : null;
+
+  const redemptionId = generateId();
+  try {
+    await sql`
+      INSERT INTO "ActivationCodeRedemption" (id, activation_code_id, user_id)
+      VALUES (${redemptionId}, ${codeId}, ${userId})
+    `;
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "";
+    if (msg.toLowerCase().includes("unique") || msg.includes("duplicate")) {
+      throw new Error("لقد استخدمت هذا الكود مسبقاً");
+    }
+    // جدول redemption قد لا يوجد — نكمل بالسلوك القديم
+  }
+
   const updated = await sql`
     UPDATE "ActivationCode"
-    SET used_at = NOW(), used_by_user_id = ${userId}
-    WHERE id = ${codeId} AND used_at IS NULL
-    RETURNING course_id
-  `;
-  const row = updated[0] as { course_id?: string } | undefined;
-  if (!row?.course_id) return null;
+    SET
+      used_at = NOW(),
+      used_by_user_id = ${userId},
+      used_count = COALESCE(used_count, 0) + 1
+    WHERE id = ${codeId}
+      AND COALESCE(used_count, 0) < COALESCE(max_uses, 1)
+    RETURNING id
+  `.catch(async () => {
+    return sql`
+      UPDATE "ActivationCode"
+      SET used_at = NOW(), used_by_user_id = ${userId}
+      WHERE id = ${codeId} AND used_at IS NULL
+      RETURNING id
+    `;
+  });
+  if (!(updated as unknown[]).length) return null;
 
   let lessonIds: string[] = [];
   let quizIds: string[] = [];
@@ -4852,11 +5759,17 @@ export async function useActivationCode(codeId: string, userId: string): Promise
     quizIds = [];
   }
 
-  // إذا لم يتم تحديد حصص ولا اختبارات => تسجيل كامل في الدورة (السلوك القديم)
-  if (lessonIds.length === 0 && quizIds.length === 0) {
-    await createEnrollment(userId, row.course_id);
+  if (targetType === "subscription") {
+    if (!planId) return null;
+    const { expiresAt } = await grantFreePlatformSubscription(userId, planId);
+    return { courseId: null, planId, targetType, lessonIds: [], quizIds: [], expiresAt };
   }
-  return { courseId: row.course_id, lessonIds, quizIds };
+
+  if (!courseId) return null;
+  if (lessonIds.length === 0 && quizIds.length === 0) {
+    await createEnrollment(userId, courseId);
+  }
+  return { courseId, planId: null, targetType: "course", lessonIds, quizIds };
 }
 
 /** الحصص المسموح بها لطالب داخل كورس عبر أكواد حصص محددة */
@@ -4866,7 +5779,14 @@ export async function getAllowedLessonIdsForUserCourse(userId: string, courseId:
       SELECT DISTINCT acl.lesson_id
       FROM "ActivationCode" ac
       JOIN "ActivationCodeLesson" acl ON acl.activation_code_id = ac.id
-      WHERE ac.used_by_user_id = ${userId} AND ac.course_id = ${courseId} AND ac.used_at IS NOT NULL
+      WHERE ac.course_id = ${courseId}
+        AND (
+          (ac.used_by_user_id = ${userId} AND ac.used_at IS NOT NULL)
+          OR EXISTS (
+            SELECT 1 FROM "ActivationCodeRedemption" r
+            WHERE r.activation_code_id = ac.id AND r.user_id = ${userId}
+          )
+        )
     `;
     return (rows as { lesson_id?: string }[]).map((r) => String(r.lesson_id ?? "")).filter(Boolean);
   } catch {
@@ -4881,7 +5801,14 @@ export async function getAllowedQuizIdsForUserCourse(userId: string, courseId: s
       SELECT DISTINCT acq.quiz_id
       FROM "ActivationCode" ac
       JOIN "ActivationCodeQuiz" acq ON acq.activation_code_id = ac.id
-      WHERE ac.used_by_user_id = ${userId} AND ac.course_id = ${courseId} AND ac.used_at IS NOT NULL
+      WHERE ac.course_id = ${courseId}
+        AND (
+          (ac.used_by_user_id = ${userId} AND ac.used_at IS NOT NULL)
+          OR EXISTS (
+            SELECT 1 FROM "ActivationCodeRedemption" r
+            WHERE r.activation_code_id = ac.id AND r.user_id = ${userId}
+          )
+        )
     `;
     return (rows as { quiz_id?: string }[]).map((r) => String(r.quiz_id ?? "")).filter(Boolean);
   } catch {
@@ -4920,12 +5847,34 @@ export async function getAccessibleCoursesForUser(userId: string): Promise<(Cour
       WHERE ac.used_by_user_id = ${userId} AND ac.used_at IS NOT NULL
     )
     OR (
-      EXISTS (
-        SELECT 1 FROM "UserPlatformSubscription" ups
-        WHERE ups.user_id = ${userId} AND ups.expires_at > NOW()
+      c.is_published = true
+      AND (
+        COALESCE(c.price, 0) > 0
+        OR COALESCE(c.access_type, 'lifetime') = 'subscription_only'
       )
-      AND c.is_published = true
-      AND COALESCE(c.price, 0) > 0
+      AND EXISTS (
+        SELECT 1
+        FROM "UserPlatformSubscription" ups
+        JOIN "SubscriptionPlan" sp ON sp.id = ups.plan_id
+        WHERE ups.user_id = ${userId}
+          AND ups.expires_at > NOW()
+          AND sp.covers_courses = true
+          AND (
+            NOT EXISTS (
+              SELECT 1 FROM "SubscriptionPlanCoverage" spc
+              WHERE spc.plan_id = sp.id AND spc.content_kind = 'courses'
+            )
+            OR (
+              c.category_id IS NOT NULL
+              AND EXISTS (
+                SELECT 1 FROM "SubscriptionPlanCoverage" spc
+                WHERE spc.plan_id = sp.id
+                  AND spc.content_kind = 'courses'
+                  AND spc.target_id = c.category_id
+              )
+            )
+          )
+      )
     )
     ORDER BY c.created_at DESC
   `;
@@ -4975,15 +5924,13 @@ export async function getLessonRatingSummary(
       (SELECT COUNT(*)::int FROM "LessonRating" r WHERE r.lesson_id = l.id) AS lesson_rating_count,
       (
         SELECT AVG(r.rating)::float8
-        FROM "LessonRating" r
-        JOIN "Lesson" lx ON lx.id = r.lesson_id
-        WHERE lx.course_id = l.course_id
+        FROM "CourseRating" r
+        WHERE r.course_id = l.course_id AND (r.is_hidden IS NULL OR r.is_hidden = false)
       ) AS course_avg_rating,
       (
         SELECT COUNT(*)::int
-        FROM "LessonRating" r
-        JOIN "Lesson" lx ON lx.id = r.lesson_id
-        WHERE lx.course_id = l.course_id
+        FROM "CourseRating" r
+        WHERE r.course_id = l.course_id AND (r.is_hidden IS NULL OR r.is_hidden = false)
       ) AS course_rating_count,
       (
         SELECT r.rating::int
@@ -5049,6 +5996,263 @@ export async function upsertLessonRating(data: {
     RETURNING *
   `;
   return rowToCamel(rows[0] as Record<string, unknown>) as LessonRating;
+}
+
+export type CourseRatingSummary = {
+  courseId: string;
+  averageRating: number | null;
+  ratingCount: number;
+  userRating: number | null;
+  userComment: string | null;
+};
+
+export async function getCourseRatingSummary(
+  courseId: string,
+  userId?: string | null
+): Promise<CourseRatingSummary> {
+  await ensureCourseRatingsSchema();
+  if (!courseRatingsSchemaAvailable) {
+    return { courseId, averageRating: null, ratingCount: 0, userRating: null, userComment: null };
+  }
+  const rows = await sql`
+    SELECT
+      (SELECT ROUND(AVG(r.rating)::numeric, 2)::float8
+       FROM "CourseRating" r
+       WHERE r.course_id = ${courseId} AND (r.is_hidden IS NULL OR r.is_hidden = false)) AS avg_rating,
+      (SELECT COUNT(*)::int
+       FROM "CourseRating" r
+       WHERE r.course_id = ${courseId} AND (r.is_hidden IS NULL OR r.is_hidden = false)) AS rating_count
+  `;
+  const avg = (rows[0] as { avg_rating?: number | null } | undefined)?.avg_rating;
+  const count = Number((rows[0] as { rating_count?: number } | undefined)?.rating_count ?? 0);
+  let userRating: number | null = null;
+  let userComment: string | null = null;
+  if (userId) {
+    const mine = await sql`
+      SELECT rating, comment FROM "CourseRating"
+      WHERE course_id = ${courseId} AND user_id = ${userId}
+      LIMIT 1
+    `;
+    const m = mine[0] as { rating?: number; comment?: string | null } | undefined;
+    if (m?.rating != null) {
+      userRating = Number(m.rating);
+      userComment = m.comment != null ? String(m.comment) : null;
+    }
+  }
+  return {
+    courseId,
+    averageRating: avg != null && Number.isFinite(Number(avg)) ? Number(avg) : null,
+    ratingCount: count,
+    userRating,
+    userComment,
+  };
+}
+
+export async function getCourseRatingForUser(
+  courseId: string,
+  userId: string
+): Promise<CourseRating | null> {
+  await ensureCourseRatingsSchema();
+  if (!courseRatingsSchemaAvailable) return null;
+  const rows = await sql`
+    SELECT * FROM "CourseRating" WHERE course_id = ${courseId} AND user_id = ${userId} LIMIT 1
+  `;
+  return rowToCamel(rows[0] as Record<string, unknown>) as CourseRating | null;
+}
+
+export async function upsertCourseRating(data: {
+  course_id: string;
+  user_id: string;
+  rating: 1 | 2 | 3 | 4 | 5;
+  comment?: string | null;
+}): Promise<CourseRating> {
+  await ensureCourseRatingsSchema();
+  if (!courseRatingsSchemaAvailable) {
+    throw new Error("ميزة تقييم الكورس غير متاحة حالياً");
+  }
+  const comment =
+    data.comment != null && String(data.comment).trim()
+      ? String(data.comment).trim().slice(0, 1000)
+      : null;
+  const id = generateId();
+  const rows = await sql`
+    INSERT INTO "CourseRating" (id, course_id, user_id, rating, comment, is_hidden, created_at, updated_at)
+    VALUES (${id}, ${data.course_id}, ${data.user_id}, ${data.rating}, ${comment}, false, NOW(), NOW())
+    ON CONFLICT (course_id, user_id) DO UPDATE SET
+      rating = EXCLUDED.rating,
+      comment = EXCLUDED.comment,
+      updated_at = NOW()
+    RETURNING *
+  `;
+  return rowToCamel(rows[0] as Record<string, unknown>) as CourseRating;
+}
+
+export type AdminCourseRatingRow = {
+  id: string;
+  rating: number;
+  comment: string | null;
+  isHidden: boolean;
+  createdAt: Date | string;
+  updatedAt: Date | string;
+  studentName: string;
+  studentEmail: string | null;
+  courseId: string;
+  courseTitle: string;
+  courseTitleAr: string | null;
+};
+
+export async function listCourseRatingsForAdmin(opts?: {
+  search?: string;
+  hidden?: boolean | null;
+  limit?: number;
+  offset?: number;
+}): Promise<{ rows: AdminCourseRatingRow[]; total: number }> {
+  await ensureCourseRatingsSchema();
+  if (!courseRatingsSchemaAvailable) return { rows: [], total: 0 };
+  const limit = Math.min(200, Math.max(1, Math.floor(opts?.limit ?? 50)));
+  const offset = Math.max(0, Math.floor(opts?.offset ?? 0));
+  const search = opts?.search?.trim() || "";
+  const hiddenFilter = opts?.hidden;
+
+  const like = search ? `%${search}%` : null;
+  let countRows: Record<string, unknown>[];
+  let dataRows: Record<string, unknown>[];
+
+  if (like && hiddenFilter === true) {
+    countRows = (await sql`
+      SELECT COUNT(*)::int AS c FROM "CourseRating" cr
+      JOIN "User" u ON u.id = cr.user_id
+      JOIN "Course" c ON c.id = cr.course_id
+      WHERE cr.is_hidden = true
+        AND (u.name ILIKE ${like} OR u.email ILIKE ${like} OR c.title ILIKE ${like} OR c.title_ar ILIKE ${like} OR cr.comment ILIKE ${like})
+    `) as Record<string, unknown>[];
+    dataRows = (await sql`
+      SELECT cr.id, cr.rating, cr.comment, cr.is_hidden, cr.created_at, cr.updated_at,
+             u.name AS student_name, u.email AS student_email,
+             c.id AS course_id, c.title AS course_title, c.title_ar AS course_title_ar
+      FROM "CourseRating" cr
+      JOIN "User" u ON u.id = cr.user_id
+      JOIN "Course" c ON c.id = cr.course_id
+      WHERE cr.is_hidden = true
+        AND (u.name ILIKE ${like} OR u.email ILIKE ${like} OR c.title ILIKE ${like} OR c.title_ar ILIKE ${like} OR cr.comment ILIKE ${like})
+      ORDER BY cr.created_at DESC
+      LIMIT ${limit} OFFSET ${offset}
+    `) as Record<string, unknown>[];
+  } else if (like && hiddenFilter === false) {
+    countRows = (await sql`
+      SELECT COUNT(*)::int AS c FROM "CourseRating" cr
+      JOIN "User" u ON u.id = cr.user_id
+      JOIN "Course" c ON c.id = cr.course_id
+      WHERE (cr.is_hidden IS NULL OR cr.is_hidden = false)
+        AND (u.name ILIKE ${like} OR u.email ILIKE ${like} OR c.title ILIKE ${like} OR c.title_ar ILIKE ${like} OR cr.comment ILIKE ${like})
+    `) as Record<string, unknown>[];
+    dataRows = (await sql`
+      SELECT cr.id, cr.rating, cr.comment, cr.is_hidden, cr.created_at, cr.updated_at,
+             u.name AS student_name, u.email AS student_email,
+             c.id AS course_id, c.title AS course_title, c.title_ar AS course_title_ar
+      FROM "CourseRating" cr
+      JOIN "User" u ON u.id = cr.user_id
+      JOIN "Course" c ON c.id = cr.course_id
+      WHERE (cr.is_hidden IS NULL OR cr.is_hidden = false)
+        AND (u.name ILIKE ${like} OR u.email ILIKE ${like} OR c.title ILIKE ${like} OR c.title_ar ILIKE ${like} OR cr.comment ILIKE ${like})
+      ORDER BY cr.created_at DESC
+      LIMIT ${limit} OFFSET ${offset}
+    `) as Record<string, unknown>[];
+  } else if (like) {
+    countRows = (await sql`
+      SELECT COUNT(*)::int AS c FROM "CourseRating" cr
+      JOIN "User" u ON u.id = cr.user_id
+      JOIN "Course" c ON c.id = cr.course_id
+      WHERE (u.name ILIKE ${like} OR u.email ILIKE ${like} OR c.title ILIKE ${like} OR c.title_ar ILIKE ${like} OR cr.comment ILIKE ${like})
+    `) as Record<string, unknown>[];
+    dataRows = (await sql`
+      SELECT cr.id, cr.rating, cr.comment, cr.is_hidden, cr.created_at, cr.updated_at,
+             u.name AS student_name, u.email AS student_email,
+             c.id AS course_id, c.title AS course_title, c.title_ar AS course_title_ar
+      FROM "CourseRating" cr
+      JOIN "User" u ON u.id = cr.user_id
+      JOIN "Course" c ON c.id = cr.course_id
+      WHERE (u.name ILIKE ${like} OR u.email ILIKE ${like} OR c.title ILIKE ${like} OR c.title_ar ILIKE ${like} OR cr.comment ILIKE ${like})
+      ORDER BY cr.created_at DESC
+      LIMIT ${limit} OFFSET ${offset}
+    `) as Record<string, unknown>[];
+  } else if (hiddenFilter === true) {
+    countRows = (await sql`
+      SELECT COUNT(*)::int AS c FROM "CourseRating" WHERE is_hidden = true
+    `) as Record<string, unknown>[];
+    dataRows = (await sql`
+      SELECT cr.id, cr.rating, cr.comment, cr.is_hidden, cr.created_at, cr.updated_at,
+             u.name AS student_name, u.email AS student_email,
+             c.id AS course_id, c.title AS course_title, c.title_ar AS course_title_ar
+      FROM "CourseRating" cr
+      JOIN "User" u ON u.id = cr.user_id
+      JOIN "Course" c ON c.id = cr.course_id
+      WHERE cr.is_hidden = true
+      ORDER BY cr.created_at DESC
+      LIMIT ${limit} OFFSET ${offset}
+    `) as Record<string, unknown>[];
+  } else if (hiddenFilter === false) {
+    countRows = (await sql`
+      SELECT COUNT(*)::int AS c FROM "CourseRating" WHERE is_hidden IS NULL OR is_hidden = false
+    `) as Record<string, unknown>[];
+    dataRows = (await sql`
+      SELECT cr.id, cr.rating, cr.comment, cr.is_hidden, cr.created_at, cr.updated_at,
+             u.name AS student_name, u.email AS student_email,
+             c.id AS course_id, c.title AS course_title, c.title_ar AS course_title_ar
+      FROM "CourseRating" cr
+      JOIN "User" u ON u.id = cr.user_id
+      JOIN "Course" c ON c.id = cr.course_id
+      WHERE cr.is_hidden IS NULL OR cr.is_hidden = false
+      ORDER BY cr.created_at DESC
+      LIMIT ${limit} OFFSET ${offset}
+    `) as Record<string, unknown>[];
+  } else {
+    countRows = (await sql`SELECT COUNT(*)::int AS c FROM "CourseRating"`) as Record<string, unknown>[];
+    dataRows = (await sql`
+      SELECT cr.id, cr.rating, cr.comment, cr.is_hidden, cr.created_at, cr.updated_at,
+             u.name AS student_name, u.email AS student_email,
+             c.id AS course_id, c.title AS course_title, c.title_ar AS course_title_ar
+      FROM "CourseRating" cr
+      JOIN "User" u ON u.id = cr.user_id
+      JOIN "Course" c ON c.id = cr.course_id
+      ORDER BY cr.created_at DESC
+      LIMIT ${limit} OFFSET ${offset}
+    `) as Record<string, unknown>[];
+  }
+
+  const total = Number((countRows[0] as { c?: number } | undefined)?.c ?? 0);
+  const rows: AdminCourseRatingRow[] = dataRows.map((r) => ({
+    id: String(r.id),
+    rating: Number(r.rating),
+    comment: r.comment != null ? String(r.comment) : null,
+    isHidden: r.is_hidden === true || r.is_hidden === "true",
+    createdAt: r.created_at as Date | string,
+    updatedAt: r.updated_at as Date | string,
+    studentName: String(r.student_name ?? ""),
+    studentEmail: r.student_email != null ? String(r.student_email) : null,
+    courseId: String(r.course_id),
+    courseTitle: String(r.course_title ?? ""),
+    courseTitleAr: r.course_title_ar != null ? String(r.course_title_ar) : null,
+  }));
+  return { rows, total };
+}
+
+export async function setCourseRatingHidden(id: string, hidden: boolean): Promise<boolean> {
+  await ensureCourseRatingsSchema();
+  if (!courseRatingsSchemaAvailable) return false;
+  const result = await sql`
+    UPDATE "CourseRating" SET is_hidden = ${hidden}, updated_at = NOW()
+    WHERE id = ${id.trim()}
+    RETURNING id
+  `;
+  return (result as { id: string }[]).length > 0;
+}
+
+export async function deleteCourseRating(id: string): Promise<boolean> {
+  await ensureCourseRatingsSchema();
+  if (!courseRatingsSchemaAvailable) return false;
+  const result = await sql`DELETE FROM "CourseRating" WHERE id = ${id.trim()} RETURNING id`;
+  return (result as { id: string }[]).length > 0;
 }
 
 export async function deleteActivationCode(id: string): Promise<void> {
@@ -5812,34 +7016,76 @@ export async function getConversationById(conversationId: string): Promise<Conve
 }
 
 /** محادثات الموظف مع الطلبة (للأدمن/مساعد) */
-export async function getConversationsByStaffId(staffUserId: string): Promise<(Conversation & { studentName?: string })[]> {
+export async function getConversationsByStaffId(
+  staffUserId: string,
+): Promise<(Conversation & { studentName?: string; unreadCount: number })[]> {
+  try {
+    await sql`ALTER TABLE "Conversation" ADD COLUMN IF NOT EXISTS staff_last_read_at TIMESTAMPTZ`;
+  } catch {
+    /* noop */
+  }
   const rows = await sql`
-    SELECT c.*, u.name as student_name
+    SELECT
+      c.*,
+      u.name AS student_name,
+      (
+        SELECT COUNT(*)::int
+        FROM "Message" m
+        WHERE m.conversation_id = c.id
+          AND m.sender_id <> ${staffUserId}
+          AND (c.staff_last_read_at IS NULL OR m.created_at > c.staff_last_read_at)
+      ) AS unread_count
     FROM "Conversation" c
     JOIN "User" u ON u.id = c.student_user_id
     WHERE c.staff_user_id = ${staffUserId}
     ORDER BY c.updated_at DESC
   `;
   return (rows as Record<string, unknown>[]).map((r) => {
-    const { student_name, ...rest } = r;
+    const { student_name, unread_count, ...rest } = r;
     const conv = rowToCamel(rest) as Conversation;
-    return { ...conv, studentName: student_name as string };
+    return {
+      ...conv,
+      studentName: student_name as string,
+      unreadCount: Number(unread_count ?? 0),
+    };
   });
 }
 
 /** محادثات الطالب (الرسائل الواردة من الموظفين) */
-export async function getConversationsByStudentId(studentUserId: string): Promise<(Conversation & { staffName?: string; staffRole?: string })[]> {
+export async function getConversationsByStudentId(
+  studentUserId: string,
+): Promise<(Conversation & { staffName?: string; staffRole?: string; unreadCount: number })[]> {
+  try {
+    await sql`ALTER TABLE "Conversation" ADD COLUMN IF NOT EXISTS student_last_read_at TIMESTAMPTZ`;
+  } catch {
+    /* noop */
+  }
   const rows = await sql`
-    SELECT c.*, u.name as staff_name, u.role as staff_role
+    SELECT
+      c.*,
+      u.name AS staff_name,
+      u.role AS staff_role,
+      (
+        SELECT COUNT(*)::int
+        FROM "Message" m
+        WHERE m.conversation_id = c.id
+          AND m.sender_id <> ${studentUserId}
+          AND (c.student_last_read_at IS NULL OR m.created_at > c.student_last_read_at)
+      ) AS unread_count
     FROM "Conversation" c
     JOIN "User" u ON u.id = c.staff_user_id
     WHERE c.student_user_id = ${studentUserId}
     ORDER BY c.updated_at DESC
   `;
   return (rows as Record<string, unknown>[]).map((r) => {
-    const { staff_name, staff_role, ...rest } = r;
+    const { staff_name, staff_role, unread_count, ...rest } = r;
     const conv = rowToCamel(rest) as Conversation;
-    return { ...conv, staffName: staff_name as string, staffRole: staff_role as string };
+    return {
+      ...conv,
+      staffName: staff_name as string,
+      staffRole: staff_role as string,
+      unreadCount: Number(unread_count ?? 0),
+    };
   });
 }
 
@@ -6016,6 +7262,58 @@ export async function getLibraryCategoryById(id: string): Promise<LibraryCategor
   return row ? mapLibraryCategory(row) : null;
 }
 
+export async function getLibraryCategoryBySlug(slug: string): Promise<LibraryCategoryRow | null> {
+  await ensureLibraryCategorySchema();
+  const s = slug.trim();
+  if (!s) return null;
+  const rows = await sql`
+    SELECT id, name, name_ar, slug, parent_id, "order", created_at
+    FROM "LibraryCategory"
+    WHERE slug = ${s}
+    LIMIT 1
+  `;
+  const row = rows[0] as Record<string, unknown> | undefined;
+  return row ? mapLibraryCategory(row) : null;
+}
+
+/** منتجات تصنيف واحد — أو التصنيف مع أبنائه إن وُجدوا */
+export async function listStoreProductsPublicByCategoryIds(
+  categoryIds: string[],
+): Promise<StoreProductRow[]> {
+  try {
+    await ensureStoreProductsSchema();
+    const ids = [...new Set(categoryIds.map((x) => x.trim()).filter(Boolean))];
+    if (ids.length === 0) return [];
+    const rows = await sql`
+      SELECT id, title, description, price, image_url, pdf_url, is_active, sort_order, created_at,
+             category_id, content_type, article_body, view_count
+      FROM "StoreProduct"
+      WHERE is_active = true AND category_id = ANY(${ids})
+      ORDER BY sort_order ASC, created_at DESC
+    `;
+    return (rows as Record<string, unknown>[]).map(mapStoreProduct);
+  } catch {
+    return [];
+  }
+}
+
+/** منتجات بلا تصنيف */
+export async function listStoreProductsPublicUncategorized(): Promise<StoreProductRow[]> {
+  try {
+    await ensureStoreProductsSchema();
+    const rows = await sql`
+      SELECT id, title, description, price, image_url, pdf_url, is_active, sort_order, created_at,
+             category_id, content_type, article_body, view_count
+      FROM "StoreProduct"
+      WHERE is_active = true AND (category_id IS NULL OR TRIM(category_id) = '')
+      ORDER BY sort_order ASC, created_at DESC
+    `;
+    return (rows as Record<string, unknown>[]).map(mapStoreProduct);
+  } catch {
+    return [];
+  }
+}
+
 export async function createLibraryCategory(data: {
   name: string;
   name_ar?: string | null;
@@ -6072,6 +7370,16 @@ async function ensureJobPostingSchema(): Promise<void> {
   if (jobPostingSchemaEnsured) return;
   try {
     await sql`
+      CREATE TABLE IF NOT EXISTS "JobCategory" (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        name_ar TEXT,
+        slug TEXT NOT NULL UNIQUE,
+        "order" INT NOT NULL DEFAULT 0,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `;
+    await sql`
       CREATE TABLE IF NOT EXISTS "JobPosting" (
         id TEXT PRIMARY KEY,
         title TEXT NOT NULL,
@@ -6093,12 +7401,72 @@ async function ensureJobPostingSchema(): Promise<void> {
     await sql`ALTER TABLE "JobPosting" ADD COLUMN IF NOT EXISTS location_en TEXT`;
     await sql`ALTER TABLE "JobPosting" ADD COLUMN IF NOT EXISTS job_type_ar TEXT`;
     await sql`ALTER TABLE "JobPosting" ADD COLUMN IF NOT EXISTS job_type_en TEXT`;
+    await sql`ALTER TABLE "JobPosting" ADD COLUMN IF NOT EXISTS category_id TEXT`;
+    await sql`ALTER TABLE "JobPosting" ADD COLUMN IF NOT EXISTS company_name TEXT`;
+    await sql`ALTER TABLE "JobPosting" ADD COLUMN IF NOT EXISTS salary_min DECIMAL(12, 2)`;
+    await sql`ALTER TABLE "JobPosting" ADD COLUMN IF NOT EXISTS salary_max DECIMAL(12, 2)`;
+    await sql`ALTER TABLE "JobPosting" ADD COLUMN IF NOT EXISTS salary_label TEXT`;
+    await sql`ALTER TABLE "JobPosting" ADD COLUMN IF NOT EXISTS experience_label TEXT`;
+    await sql`ALTER TABLE "JobPosting" ADD COLUMN IF NOT EXISTS skills TEXT`;
+    await sql`ALTER TABLE "JobPosting" ADD COLUMN IF NOT EXISTS badge TEXT`;
+    await sql`ALTER TABLE "JobPosting" ADD COLUMN IF NOT EXISTS phones TEXT`;
+    await sql`ALTER TABLE "JobPosting" ADD COLUMN IF NOT EXISTS show_phone BOOLEAN NOT NULL DEFAULT true`;
+    await sql`ALTER TABLE "JobPosting" ADD COLUMN IF NOT EXISTS show_email BOOLEAN NOT NULL DEFAULT true`;
+    await sql`ALTER TABLE "JobPosting" ADD COLUMN IF NOT EXISTS contact_order TEXT NOT NULL DEFAULT 'phone_first'`;
+    await sql`ALTER TABLE "JobPosting" ADD COLUMN IF NOT EXISTS view_count INTEGER NOT NULL DEFAULT 0`;
     await sql`CREATE INDEX IF NOT EXISTS "JobPosting_published_order_idx" ON "JobPosting"(is_published, "order")`;
+    await sql`CREATE INDEX IF NOT EXISTS "JobPosting_published_created_idx" ON "JobPosting"(is_published, created_at DESC)`;
     jobPostingSchemaEnsured = true;
   } catch {
     /* DDL غير متاح */
   }
 }
+
+function parseJobPhones(raw: unknown, legacyPhone?: unknown): string[] {
+  const out: string[] = [];
+  if (typeof raw === "string" && raw.trim()) {
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      if (Array.isArray(parsed)) {
+        for (const p of parsed) {
+          const s = String(p ?? "").trim();
+          if (s && !out.includes(s)) out.push(s);
+        }
+      }
+    } catch {
+      const s = raw.trim();
+      if (s) out.push(s);
+    }
+  }
+  const legacy = legacyPhone != null ? String(legacyPhone).trim() : "";
+  if (legacy && !out.includes(legacy)) out.unshift(legacy);
+  return out;
+}
+
+function parseJobSkills(raw: unknown): string[] {
+  if (typeof raw !== "string" || !raw.trim()) return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (Array.isArray(parsed)) {
+      return parsed.map((x) => String(x ?? "").trim()).filter(Boolean);
+    }
+  } catch {
+    /* comma-separated */
+  }
+  return raw
+    .split(/[,،\n]/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+export type JobCategoryRow = {
+  id: string;
+  name: string;
+  nameAr: string | null;
+  slug: string;
+  order: number;
+  createdAt: string;
+};
 
 export type JobPostingRow = {
   id: string;
@@ -6111,17 +7479,48 @@ export type JobPostingRow = {
   imageUrl: string | null;
   email: string | null;
   phone: string | null;
+  phones: string[];
   whatsapp: string | null;
   locationEn: string | null;
   jobTypeAr: string | null;
   jobTypeEn: string | null;
+  categoryId: string | null;
+  companyName: string | null;
+  salaryMin: number | null;
+  salaryMax: number | null;
+  salaryLabel: string | null;
+  experienceLabel: string | null;
+  skills: string[];
+  badge: string | null;
+  showPhone: boolean;
+  showEmail: boolean;
+  contactOrder: "phone_first" | "email_first";
+  viewCount: number;
   isPublished: boolean;
   order: number;
   createdAt: string;
   updatedAt: string;
 };
 
+function mapJobCategory(r: Record<string, unknown>): JobCategoryRow {
+  return {
+    id: String(r.id),
+    name: String(r.name ?? ""),
+    nameAr: r.name_ar ? String(r.name_ar) : null,
+    slug: String(r.slug ?? ""),
+    order: Number(r.order ?? 0),
+    createdAt:
+      r.created_at instanceof Date
+        ? r.created_at.toISOString()
+        : String(r.created_at ?? new Date().toISOString()),
+  };
+}
+
 function mapJobPosting(r: Record<string, unknown>): JobPostingRow {
+  const phones = parseJobPhones(r.phones, r.phone);
+  const contactOrder = String(r.contact_order ?? "phone_first") === "email_first" ? "email_first" : "phone_first";
+  const salaryMin = r.salary_min != null && r.salary_min !== "" ? Number(r.salary_min) : null;
+  const salaryMax = r.salary_max != null && r.salary_max !== "" ? Number(r.salary_max) : null;
   return {
     id: String(r.id),
     title: String(r.title ?? ""),
@@ -6132,11 +7531,24 @@ function mapJobPosting(r: Record<string, unknown>): JobPostingRow {
     jobType: r.job_type ? String(r.job_type) : null,
     imageUrl: r.image_url ? String(r.image_url) : null,
     email: r.email ? String(r.email) : null,
-    phone: r.phone ? String(r.phone) : null,
+    phone: phones[0] ?? (r.phone ? String(r.phone) : null),
+    phones,
     whatsapp: r.whatsapp ? String(r.whatsapp) : null,
     locationEn: r.location_en ? String(r.location_en) : null,
     jobTypeAr: r.job_type_ar ? String(r.job_type_ar) : null,
     jobTypeEn: r.job_type_en ? String(r.job_type_en) : null,
+    categoryId: r.category_id ? String(r.category_id) : null,
+    companyName: r.company_name ? String(r.company_name) : null,
+    salaryMin: Number.isFinite(salaryMin as number) ? (salaryMin as number) : null,
+    salaryMax: Number.isFinite(salaryMax as number) ? (salaryMax as number) : null,
+    salaryLabel: r.salary_label ? String(r.salary_label) : null,
+    experienceLabel: r.experience_label ? String(r.experience_label) : null,
+    skills: parseJobSkills(r.skills),
+    badge: r.badge ? String(r.badge) : null,
+    showPhone: r.show_phone !== false && r.show_phone !== "false",
+    showEmail: r.show_email !== false && r.show_email !== "false",
+    contactOrder,
+    viewCount: Number(r.view_count ?? 0) || 0,
     isPublished: Boolean(r.is_published),
     order: Number(r.order ?? 0),
     createdAt:
@@ -6150,16 +7562,102 @@ function mapJobPosting(r: Record<string, unknown>): JobPostingRow {
   };
 }
 
+export async function listJobCategories(): Promise<JobCategoryRow[]> {
+  try {
+    await ensureJobPostingSchema();
+    const rows = await sql`
+      SELECT id, name, name_ar, slug, "order", created_at
+      FROM "JobCategory"
+      ORDER BY "order" ASC, name ASC
+    `;
+    return (rows as Record<string, unknown>[]).map(mapJobCategory);
+  } catch {
+    return [];
+  }
+}
+
+export async function getJobCategoryBySlug(slug: string): Promise<JobCategoryRow | null> {
+  await ensureJobPostingSchema();
+  const s = slug.trim();
+  if (!s) return null;
+  const rows = await sql`
+    SELECT id, name, name_ar, slug, "order", created_at
+    FROM "JobCategory" WHERE slug = ${s} LIMIT 1
+  `;
+  const row = rows[0] as Record<string, unknown> | undefined;
+  return row ? mapJobCategory(row) : null;
+}
+
+export async function createJobCategory(data: {
+  name: string;
+  name_ar?: string | null;
+  slug: string;
+}): Promise<JobCategoryRow> {
+  await ensureJobPostingSchema();
+  const id = generateId();
+  const maxRows = await sql`SELECT COALESCE(MAX("order"), -1)::int AS m FROM "JobCategory"`;
+  const order = Number((maxRows[0] as { m?: number })?.m ?? -1) + 1;
+  await sql`
+    INSERT INTO "JobCategory" (id, name, name_ar, slug, "order")
+    VALUES (
+      ${id},
+      ${data.name.trim()},
+      ${data.name_ar?.trim() || null},
+      ${data.slug.trim()},
+      ${order}
+    )
+  `;
+  const created = await getJobCategoryBySlug(data.slug.trim());
+  if (!created) throw new Error("فشل إنشاء التصنيف");
+  return created;
+}
+
+export async function incrementJobViewCount(id: string): Promise<void> {
+  try {
+    await ensureJobPostingSchema();
+    await sql`
+      UPDATE "JobPosting"
+      SET view_count = COALESCE(view_count, 0) + 1, updated_at = NOW()
+      WHERE id = ${id.trim()} AND is_published = true
+    `;
+  } catch {
+    /* ignore */
+  }
+}
+
 export async function listPublishedJobs(): Promise<JobPostingRow[]> {
   try {
     await ensureJobPostingSchema();
     const rows = await sql`
       SELECT id, title, title_ar, description, description_ar, location, job_type,
-             image_url, email, phone, whatsapp, location_en, job_type_ar, job_type_en,
+             image_url, email, phone, phones, whatsapp, location_en, job_type_ar, job_type_en,
+             category_id, company_name, salary_min, salary_max, salary_label, experience_label,
+             skills, badge, show_phone, show_email, contact_order, view_count,
              is_published, "order", created_at, updated_at
       FROM "JobPosting"
       WHERE is_published = true
-      ORDER BY "order" ASC, created_at DESC
+      ORDER BY created_at DESC, "order" ASC
+    `;
+    return (rows as Record<string, unknown>[]).map(mapJobPosting);
+  } catch {
+    return [];
+  }
+}
+
+export async function listPublishedJobsByCategoryId(categoryId: string): Promise<JobPostingRow[]> {
+  try {
+    await ensureJobPostingSchema();
+    const cid = categoryId.trim();
+    if (!cid) return [];
+    const rows = await sql`
+      SELECT id, title, title_ar, description, description_ar, location, job_type,
+             image_url, email, phone, phones, whatsapp, location_en, job_type_ar, job_type_en,
+             category_id, company_name, salary_min, salary_max, salary_label, experience_label,
+             skills, badge, show_phone, show_email, contact_order, view_count,
+             is_published, "order", created_at, updated_at
+      FROM "JobPosting"
+      WHERE is_published = true AND category_id = ${cid}
+      ORDER BY created_at DESC, "order" ASC
     `;
     return (rows as Record<string, unknown>[]).map(mapJobPosting);
   } catch {
@@ -6185,7 +7683,7 @@ export async function listPublishedJobsForHomepage(limit = 12): Promise<
       SELECT id, title, title_ar, location, job_type, image_url
       FROM "JobPosting"
       WHERE is_published = true
-      ORDER BY "order" ASC, created_at DESC
+      ORDER BY created_at DESC, "order" ASC
       LIMIT ${safeLimit}
     `;
     return (rows as Record<string, unknown>[]).map((r) => ({
@@ -6206,10 +7704,12 @@ export async function listAllJobs(): Promise<JobPostingRow[]> {
     await ensureJobPostingSchema();
     const rows = await sql`
       SELECT id, title, title_ar, description, description_ar, location, job_type,
-             image_url, email, phone, whatsapp, location_en, job_type_ar, job_type_en,
+             image_url, email, phone, phones, whatsapp, location_en, job_type_ar, job_type_en,
+             category_id, company_name, salary_min, salary_max, salary_label, experience_label,
+             skills, badge, show_phone, show_email, contact_order, view_count,
              is_published, "order", created_at, updated_at
       FROM "JobPosting"
-      ORDER BY "order" ASC, created_at DESC
+      ORDER BY created_at DESC, "order" ASC
     `;
     return (rows as Record<string, unknown>[]).map(mapJobPosting);
   } catch {
@@ -6223,7 +7723,9 @@ export async function getJobById(id: string): Promise<JobPostingRow | null> {
   if (!jid) return null;
   const rows = await sql`
     SELECT id, title, title_ar, description, description_ar, location, job_type,
-           image_url, email, phone, whatsapp, location_en, job_type_ar, job_type_en,
+           image_url, email, phone, phones, whatsapp, location_en, job_type_ar, job_type_en,
+           category_id, company_name, salary_min, salary_max, salary_label, experience_label,
+           skills, badge, show_phone, show_email, contact_order, view_count,
            is_published, "order", created_at, updated_at
     FROM "JobPosting"
     WHERE id = ${jid}
@@ -6243,10 +7745,22 @@ export async function createJob(data: {
   image_url?: string | null;
   email?: string | null;
   phone?: string | null;
+  phones?: string[] | null;
   whatsapp?: string | null;
   location_en?: string | null;
   job_type_ar?: string | null;
   job_type_en?: string | null;
+  category_id?: string | null;
+  company_name?: string | null;
+  salary_min?: number | null;
+  salary_max?: number | null;
+  salary_label?: string | null;
+  experience_label?: string | null;
+  skills?: string[] | null;
+  badge?: string | null;
+  show_phone?: boolean;
+  show_email?: boolean;
+  contact_order?: "phone_first" | "email_first";
   is_published?: boolean;
   order?: number;
 }): Promise<{ id: string }> {
@@ -6255,10 +7769,17 @@ export async function createJob(data: {
   const maxRows = await sql`SELECT COALESCE(MAX("order"), -1)::int AS max_order FROM "JobPosting"`;
   const maxOrder = Number((maxRows[0] as { max_order?: number })?.max_order ?? -1);
   const order = data.order ?? maxOrder + 1;
+  const phones = (data.phones?.length ? data.phones : data.phone ? [data.phone] : [])
+    .map((p) => String(p).trim())
+    .filter(Boolean);
+  const phonesJson = JSON.stringify(phones);
+  const skillsJson = JSON.stringify((data.skills ?? []).map((s) => String(s).trim()).filter(Boolean));
   await sql`
     INSERT INTO "JobPosting" (
       id, title, title_ar, description, description_ar, location, job_type,
-      image_url, email, phone, whatsapp, location_en, job_type_ar, job_type_en,
+      image_url, email, phone, phones, whatsapp, location_en, job_type_ar, job_type_en,
+      category_id, company_name, salary_min, salary_max, salary_label, experience_label,
+      skills, badge, show_phone, show_email, contact_order,
       is_published, "order"
     )
     VALUES (
@@ -6271,11 +7792,23 @@ export async function createJob(data: {
       ${data.job_type?.trim() || null},
       ${data.image_url?.trim() || null},
       ${data.email?.trim() || null},
-      ${data.phone?.trim() || null},
+      ${phones[0] ?? null},
+      ${phonesJson},
       ${data.whatsapp?.trim() || null},
       ${data.location_en?.trim() || null},
       ${data.job_type_ar?.trim() || null},
       ${data.job_type_en?.trim() || null},
+      ${data.category_id?.trim() || null},
+      ${data.company_name?.trim() || null},
+      ${data.salary_min ?? null},
+      ${data.salary_max ?? null},
+      ${data.salary_label?.trim() || null},
+      ${data.experience_label?.trim() || null},
+      ${skillsJson},
+      ${data.badge?.trim() || null},
+      ${data.show_phone !== false},
+      ${data.show_email !== false},
+      ${data.contact_order === "email_first" ? "email_first" : "phone_first"},
       ${data.is_published === true},
       ${order}
     )
@@ -6295,10 +7828,22 @@ export async function updateJob(
     image_url?: string | null;
     email?: string | null;
     phone?: string | null;
+    phones?: string[] | null;
     whatsapp?: string | null;
     location_en?: string | null;
     job_type_ar?: string | null;
     job_type_en?: string | null;
+    category_id?: string | null;
+    company_name?: string | null;
+    salary_min?: number | null;
+    salary_max?: number | null;
+    salary_label?: string | null;
+    experience_label?: string | null;
+    skills?: string[] | null;
+    badge?: string | null;
+    show_phone?: boolean;
+    show_email?: boolean;
+    contact_order?: "phone_first" | "email_first";
     is_published?: boolean;
     order?: number;
   },
@@ -6314,11 +7859,31 @@ export async function updateJob(
   if (data.job_type !== undefined) await sql`UPDATE "JobPosting" SET job_type = ${data.job_type?.trim() || null}, updated_at = NOW() WHERE id = ${jid}`;
   if (data.image_url !== undefined) await sql`UPDATE "JobPosting" SET image_url = ${data.image_url?.trim() || null}, updated_at = NOW() WHERE id = ${jid}`;
   if (data.email !== undefined) await sql`UPDATE "JobPosting" SET email = ${data.email?.trim() || null}, updated_at = NOW() WHERE id = ${jid}`;
-  if (data.phone !== undefined) await sql`UPDATE "JobPosting" SET phone = ${data.phone?.trim() || null}, updated_at = NOW() WHERE id = ${jid}`;
+  if (data.phones !== undefined || data.phone !== undefined) {
+    const phones = (data.phones?.length ? data.phones : data.phone ? [data.phone] : [])
+      .map((p) => String(p).trim())
+      .filter(Boolean);
+    await sql`UPDATE "JobPosting" SET phones = ${JSON.stringify(phones)}, phone = ${phones[0] ?? null}, updated_at = NOW() WHERE id = ${jid}`;
+  }
   if (data.whatsapp !== undefined) await sql`UPDATE "JobPosting" SET whatsapp = ${data.whatsapp?.trim() || null}, updated_at = NOW() WHERE id = ${jid}`;
   if (data.location_en !== undefined) await sql`UPDATE "JobPosting" SET location_en = ${data.location_en?.trim() || null}, updated_at = NOW() WHERE id = ${jid}`;
   if (data.job_type_ar !== undefined) await sql`UPDATE "JobPosting" SET job_type_ar = ${data.job_type_ar?.trim() || null}, updated_at = NOW() WHERE id = ${jid}`;
   if (data.job_type_en !== undefined) await sql`UPDATE "JobPosting" SET job_type_en = ${data.job_type_en?.trim() || null}, updated_at = NOW() WHERE id = ${jid}`;
+  if (data.category_id !== undefined) await sql`UPDATE "JobPosting" SET category_id = ${data.category_id?.trim() || null}, updated_at = NOW() WHERE id = ${jid}`;
+  if (data.company_name !== undefined) await sql`UPDATE "JobPosting" SET company_name = ${data.company_name?.trim() || null}, updated_at = NOW() WHERE id = ${jid}`;
+  if (data.salary_min !== undefined) await sql`UPDATE "JobPosting" SET salary_min = ${data.salary_min}, updated_at = NOW() WHERE id = ${jid}`;
+  if (data.salary_max !== undefined) await sql`UPDATE "JobPosting" SET salary_max = ${data.salary_max}, updated_at = NOW() WHERE id = ${jid}`;
+  if (data.salary_label !== undefined) await sql`UPDATE "JobPosting" SET salary_label = ${data.salary_label?.trim() || null}, updated_at = NOW() WHERE id = ${jid}`;
+  if (data.experience_label !== undefined) await sql`UPDATE "JobPosting" SET experience_label = ${data.experience_label?.trim() || null}, updated_at = NOW() WHERE id = ${jid}`;
+  if (data.skills !== undefined) {
+    await sql`UPDATE "JobPosting" SET skills = ${JSON.stringify((data.skills ?? []).map((s) => String(s).trim()).filter(Boolean))}, updated_at = NOW() WHERE id = ${jid}`;
+  }
+  if (data.badge !== undefined) await sql`UPDATE "JobPosting" SET badge = ${data.badge?.trim() || null}, updated_at = NOW() WHERE id = ${jid}`;
+  if (data.show_phone !== undefined) await sql`UPDATE "JobPosting" SET show_phone = ${!!data.show_phone}, updated_at = NOW() WHERE id = ${jid}`;
+  if (data.show_email !== undefined) await sql`UPDATE "JobPosting" SET show_email = ${!!data.show_email}, updated_at = NOW() WHERE id = ${jid}`;
+  if (data.contact_order !== undefined) {
+    await sql`UPDATE "JobPosting" SET contact_order = ${data.contact_order === "email_first" ? "email_first" : "phone_first"}, updated_at = NOW() WHERE id = ${jid}`;
+  }
   if (data.is_published !== undefined) await sql`UPDATE "JobPosting" SET is_published = ${data.is_published}, updated_at = NOW() WHERE id = ${jid}`;
   if (data.order !== undefined) await sql`UPDATE "JobPosting" SET "order" = ${data.order}, updated_at = NOW() WHERE id = ${jid}`;
 }
@@ -6350,187 +7915,328 @@ export async function reorderJobs(id: string, direction: "up" | "down"): Promise
 
 // ─── Platform search ────────────────────────────────────────────────────────
 
+export type PlatformSearchResultType =
+  | "section"
+  | "course"
+  | "lecture"
+  | "library"
+  | "teacher"
+  | "job"
+  | "forum"
+  | "live"
+  | "consultation";
+
 export type PlatformSearchResult = {
-  type: "section" | "course" | "lecture" | "library" | "teacher";
+  type: PlatformSearchResultType;
   id: string;
   title: string;
   slug?: string;
   href: string;
+  snippet?: string | null;
 };
 
 export async function searchPlatform(q: string): Promise<PlatformSearchResult[]> {
   const term = q.trim();
   if (!term) return [];
-  let flags = { enabled: true, courses: true, forum: true, library: true, jobs: true };
+  const { DEFAULT_SEARCH_FLAGS, parseSearchFlags } = await import("@/lib/search-flags");
+  let flags = { ...DEFAULT_SEARCH_FLAGS };
   try {
-    const { parseSearchFlags } = await import("@/lib/search-flags");
-    await sql`ALTER TABLE "HomepageSetting" ADD COLUMN IF NOT EXISTS search_flags_json TEXT`.catch(() => undefined);
-    const rows = await sql`SELECT search_flags_json FROM "HomepageSetting" WHERE id = 'default' LIMIT 1`;
+    await sql`ALTER TABLE "HomepageSetting" ADD COLUMN IF NOT EXISTS search_flags_json TEXT`.catch(
+      () => undefined,
+    );
+    const rows =
+      await sql`SELECT search_flags_json FROM "HomepageSetting" WHERE id = 'default' LIMIT 1`;
     const raw = (rows[0] as { search_flags_json?: string } | undefined)?.search_flags_json;
     flags = parseSearchFlags(raw);
   } catch {
     /* defaults */
   }
   if (!flags.enabled) return [];
+
   const likePattern = "%" + term + "%";
   const limit = 8;
   const results: PlatformSearchResult[] = [];
 
-  try {
-    await ensureCategoryCreatedByColumn();
-    const catRows = await sql`
-      SELECT id, name, name_ar, slug FROM "Category"
-      WHERE name ILIKE ${likePattern} OR name_ar ILIKE ${likePattern}
-      ORDER BY "order" ASC
-      LIMIT ${limit}
-    `;
-    for (const r of catRows as Record<string, unknown>[]) {
-      const slug = String(r.slug ?? "");
-      results.push({
-        type: "section",
-        id: String(r.id),
-        title: String(r.name_ar || r.name || ""),
-        slug: slug || undefined,
-        href: slug ? `/courses?category=${encodeURIComponent(slug)}` : "/courses",
-      });
-    }
-  } catch {
-    /* جدول غير جاهز */
-  }
-
   if (flags.courses) {
-  try {
-    await ensureLessonRatingsSchema();
-    const courseRows = await sql`
-      SELECT id, title, title_ar, slug FROM "Course"
-      WHERE is_published = true
-        AND (
-          title ILIKE ${likePattern}
-          OR title_ar ILIKE ${likePattern}
-          OR short_desc ILIKE ${likePattern}
-          OR short_desc_en ILIKE ${likePattern}
-        )
-      ORDER BY "order" ASC, created_at DESC
-      LIMIT ${limit}
-    `;
-    for (const r of courseRows as Record<string, unknown>[]) {
-      const slug = String(r.slug ?? "");
-      results.push({
-        type: "course",
-        id: String(r.id),
-        title: String(r.title_ar || r.title || ""),
-        slug: slug || undefined,
-        href: slug ? `/courses/${encodeURIComponent(slug)}` : "/courses",
-      });
+    try {
+      await ensureCategoryCreatedByColumn();
+      const catRows = await sql`
+        SELECT id, name, name_ar, slug FROM "Category"
+        WHERE name ILIKE ${likePattern} OR name_ar ILIKE ${likePattern}
+        ORDER BY "order" ASC
+        LIMIT ${limit}
+      `;
+      for (const r of catRows as Record<string, unknown>[]) {
+        const slug = String(r.slug ?? "");
+        results.push({
+          type: "section",
+          id: String(r.id),
+          title: String(r.name_ar || r.name || ""),
+          slug: slug || undefined,
+          href: slug ? `/courses?category=${encodeURIComponent(slug)}` : "/courses",
+        });
+      }
+    } catch {
+      /* noop */
     }
-  } catch {
-    /* جدول غير جاهز */
-  }
-  }
 
-  try {
-    const lessonRows = await sql`
-      SELECT l.id, l.title, l.title_ar, l.slug AS lesson_slug, c.slug AS course_slug
-      FROM "Lesson" l
-      JOIN "Course" c ON c.id = l.course_id
-      WHERE c.is_published = true
-        AND (l.title ILIKE ${likePattern} OR l.title_ar ILIKE ${likePattern})
-      ORDER BY c."order" ASC, l."order" ASC
-      LIMIT ${limit}
-    `;
-    for (const r of lessonRows as Record<string, unknown>[]) {
-      const courseSlug = String(r.course_slug ?? "");
-      const lessonSlug = String(r.lesson_slug ?? "");
-      results.push({
-        type: "lecture",
-        id: String(r.id),
-        title: String(r.title_ar || r.title || ""),
-        slug: lessonSlug || undefined,
-        href:
-          courseSlug && lessonSlug
-            ? `/courses/${encodeURIComponent(courseSlug)}/lessons/${encodeURIComponent(lessonSlug)}`
-            : courseSlug
-              ? `/courses/${encodeURIComponent(courseSlug)}`
-              : "/courses",
-      });
+    try {
+      await ensureLessonRatingsSchema();
+      const courseRows = await sql`
+        SELECT id, title, title_ar, slug, short_desc, short_desc_en FROM "Course"
+        WHERE is_published = true
+          AND (
+            title ILIKE ${likePattern}
+            OR title_ar ILIKE ${likePattern}
+            OR short_desc ILIKE ${likePattern}
+            OR short_desc_en ILIKE ${likePattern}
+          )
+        ORDER BY "order" ASC, created_at DESC
+        LIMIT ${limit}
+      `;
+      for (const r of courseRows as Record<string, unknown>[]) {
+        const slug = String(r.slug ?? "");
+        results.push({
+          type: "course",
+          id: String(r.id),
+          title: String(r.title_ar || r.title || ""),
+          slug: slug || undefined,
+          href: slug ? `/courses/${encodeURIComponent(slug)}` : "/courses",
+          snippet: String(r.short_desc || r.short_desc_en || "") || null,
+        });
+      }
+    } catch {
+      /* noop */
     }
-  } catch {
-    /* جدول غير جاهز */
+
+    try {
+      const lessonRows = await sql`
+        SELECT l.id, l.title, l.title_ar, l.slug AS lesson_slug, c.slug AS course_slug
+        FROM "Lesson" l
+        JOIN "Course" c ON c.id = l.course_id
+        WHERE c.is_published = true
+          AND (l.title ILIKE ${likePattern} OR l.title_ar ILIKE ${likePattern})
+        ORDER BY c."order" ASC, l."order" ASC
+        LIMIT ${limit}
+      `;
+      for (const r of lessonRows as Record<string, unknown>[]) {
+        const courseSlug = String(r.course_slug ?? "");
+        const lessonSlug = String(r.lesson_slug ?? "");
+        results.push({
+          type: "lecture",
+          id: String(r.id),
+          title: String(r.title_ar || r.title || ""),
+          slug: lessonSlug || undefined,
+          href:
+            courseSlug && lessonSlug
+              ? `/courses/${encodeURIComponent(courseSlug)}/lessons/${encodeURIComponent(lessonSlug)}`
+              : courseSlug
+                ? `/courses/${encodeURIComponent(courseSlug)}`
+                : "/courses",
+        });
+      }
+    } catch {
+      /* noop */
+    }
+
+    try {
+      await ensureLessonAttachmentsSchema();
+      const attachmentRows = await sql`
+        SELECT la.id, la.title, la.file_name, l.slug AS lesson_slug, c.slug AS course_slug
+        FROM "LessonAttachment" la
+        JOIN "Lesson" l ON l.id = la.lesson_id
+        JOIN "Course" c ON c.id = l.course_id
+        WHERE c.is_published = true
+          AND (la.title ILIKE ${likePattern} OR la.file_name ILIKE ${likePattern})
+        ORDER BY la."order" ASC
+        LIMIT ${limit}
+      `;
+      for (const r of attachmentRows as Record<string, unknown>[]) {
+        const courseSlug = String(r.course_slug ?? "");
+        const lessonSlug = String(r.lesson_slug ?? "");
+        results.push({
+          type: "lecture",
+          id: String(r.id),
+          title: String(r.title || r.file_name || ""),
+          href:
+            courseSlug && lessonSlug
+              ? `/courses/${encodeURIComponent(courseSlug)}/lessons/${encodeURIComponent(lessonSlug)}`
+              : courseSlug
+                ? `/courses/${encodeURIComponent(courseSlug)}`
+                : "/courses",
+        });
+      }
+    } catch {
+      /* noop */
+    }
   }
 
   if (flags.library) {
-  try {
-    await ensureStoreProductsSchema();
-    const productRows = await sql`
-      SELECT id, title FROM "StoreProduct"
-      WHERE is_active = true
-        AND (title ILIKE ${likePattern} OR description ILIKE ${likePattern})
-      ORDER BY sort_order ASC, created_at DESC
-      LIMIT ${limit}
-    `;
-    for (const r of productRows as Record<string, unknown>[]) {
-      const id = String(r.id);
-      results.push({
-        type: "library",
-        id,
-        title: String(r.title ?? ""),
-        href: `/library/${encodeURIComponent(id)}`,
-      });
+    try {
+      await ensureStoreProductsSchema();
+      const productRows = await sql`
+        SELECT id, title, description FROM "StoreProduct"
+        WHERE is_active = true
+          AND (title ILIKE ${likePattern} OR description ILIKE ${likePattern})
+        ORDER BY sort_order ASC, created_at DESC
+        LIMIT ${limit}
+      `;
+      for (const r of productRows as Record<string, unknown>[]) {
+        const id = String(r.id);
+        results.push({
+          type: "library",
+          id,
+          title: String(r.title ?? ""),
+          href: `/library/${encodeURIComponent(id)}`,
+          snippet: String(r.description ?? "").slice(0, 160) || null,
+        });
+      }
+    } catch {
+      /* noop */
     }
-  } catch {
-    /* جدول غير جاهز */
-  }
-  }
-
-  try {
-    const teacherRows = await sql`
-      SELECT id, name, teacher_subject FROM "User"
-      WHERE role = 'TEACHER' AND name ILIKE ${likePattern}
-      ORDER BY name ASC
-      LIMIT ${limit}
-    `;
-    for (const r of teacherRows as Record<string, unknown>[]) {
-      const id = String(r.id);
-      results.push({
-        type: "teacher",
-        id,
-        title: String(r.name ?? ""),
-        href: `/courses?teacher=${encodeURIComponent(id)}`,
-      });
-    }
-  } catch {
-    /* جدول غير جاهز */
   }
 
-  try {
-    await ensureLessonAttachmentsSchema();
-    const attachmentRows = await sql`
-      SELECT la.id, la.title, la.file_name, l.slug AS lesson_slug, c.slug AS course_slug
-      FROM "LessonAttachment" la
-      JOIN "Lesson" l ON l.id = la.lesson_id
-      JOIN "Course" c ON c.id = l.course_id
-      WHERE c.is_published = true
-        AND (la.title ILIKE ${likePattern} OR la.file_name ILIKE ${likePattern})
-      ORDER BY la."order" ASC
-      LIMIT ${limit}
-    `;
-    for (const r of attachmentRows as Record<string, unknown>[]) {
-      const courseSlug = String(r.course_slug ?? "");
-      const lessonSlug = String(r.lesson_slug ?? "");
-      results.push({
-        type: "lecture",
-        id: String(r.id),
-        title: String(r.title || r.file_name || ""),
-        href:
-          courseSlug && lessonSlug
-            ? `/courses/${encodeURIComponent(courseSlug)}/lessons/${encodeURIComponent(lessonSlug)}`
-            : courseSlug
-              ? `/courses/${encodeURIComponent(courseSlug)}`
-              : "/courses",
-      });
+  if (flags.jobs) {
+    try {
+      await ensureJobPostingSchema();
+      const jobRows = await sql`
+        SELECT id, title, title_ar, description, description_ar, company_name
+        FROM "JobPosting"
+        WHERE is_published = true
+          AND (
+            title ILIKE ${likePattern}
+            OR title_ar ILIKE ${likePattern}
+            OR description ILIKE ${likePattern}
+            OR description_ar ILIKE ${likePattern}
+            OR company_name ILIKE ${likePattern}
+          )
+        ORDER BY "order" ASC, created_at DESC
+        LIMIT ${limit}
+      `;
+      for (const r of jobRows as Record<string, unknown>[]) {
+        const id = String(r.id);
+        results.push({
+          type: "job",
+          id,
+          title: String(r.title_ar || r.title || ""),
+          href: `/jobs/${encodeURIComponent(id)}`,
+          snippet:
+            String(r.company_name || r.description_ar || r.description || "").slice(0, 160) ||
+            null,
+        });
+      }
+    } catch {
+      /* noop */
     }
-  } catch {
-    /* جدول غير جاهز */
+  }
+
+  if (flags.forum) {
+    try {
+      const forumRows = await sql`
+        SELECT id, title, body FROM "ForumThread"
+        WHERE title ILIKE ${likePattern} OR body ILIKE ${likePattern}
+        ORDER BY is_pinned DESC, updated_at DESC
+        LIMIT ${limit}
+      `;
+      for (const r of forumRows as Record<string, unknown>[]) {
+        const id = String(r.id);
+        results.push({
+          type: "forum",
+          id,
+          title: String(r.title ?? ""),
+          href: `/forum/${encodeURIComponent(id)}`,
+          snippet: String(r.body ?? "").slice(0, 160) || null,
+        });
+      }
+    } catch {
+      /* noop */
+    }
+  }
+
+  if (flags.live) {
+    try {
+      const liveRows = await sql`
+        SELECT id, title, title_ar, description
+        FROM "LiveStream"
+        WHERE
+          title ILIKE ${likePattern}
+          OR title_ar ILIKE ${likePattern}
+          OR description ILIKE ${likePattern}
+        ORDER BY scheduled_at DESC NULLS LAST
+        LIMIT ${limit}
+      `;
+      for (const r of liveRows as Record<string, unknown>[]) {
+        const id = String(r.id);
+        results.push({
+          type: "live",
+          id,
+          title: String(r.title_ar || r.title || ""),
+          href: `/live/${encodeURIComponent(id)}`,
+          snippet: String(r.description ?? "").slice(0, 160) || null,
+        });
+      }
+    } catch {
+      /* noop */
+    }
+  }
+
+  if (flags.consultations) {
+    try {
+      const consultRows = await sql`
+        SELECT id, title, title_ar, description, description_ar
+        FROM "ConsultationOffer"
+        WHERE is_published = true
+          AND (
+            title ILIKE ${likePattern}
+            OR title_ar ILIKE ${likePattern}
+            OR description ILIKE ${likePattern}
+            OR description_ar ILIKE ${likePattern}
+          )
+        ORDER BY "order" ASC, created_at DESC
+        LIMIT ${limit}
+      `;
+      for (const r of consultRows as Record<string, unknown>[]) {
+        const id = String(r.id);
+        results.push({
+          type: "consultation",
+          id,
+          title: String(r.title_ar || r.title || ""),
+          href: `/consultations/${encodeURIComponent(id)}`,
+          snippet:
+            String(r.description_ar || r.description || "").slice(0, 160) || null,
+        });
+      }
+    } catch {
+      /* noop */
+    }
+  }
+
+  if (flags.trainers) {
+    try {
+      const teacherRows = await sql`
+        SELECT id, name, teacher_subject
+        FROM "User"
+        WHERE role = 'TEACHER'
+          AND (
+            name ILIKE ${likePattern}
+            OR teacher_subject ILIKE ${likePattern}
+          )
+        ORDER BY name ASC
+        LIMIT ${limit}
+      `;
+      for (const r of teacherRows as Record<string, unknown>[]) {
+        const id = String(r.id);
+        results.push({
+          type: "teacher",
+          id,
+          title: String(r.name ?? ""),
+          href: `/courses?teacher=${encodeURIComponent(id)}`,
+          snippet: String(r.teacher_subject ?? "") || null,
+        });
+      }
+    } catch {
+      /* noop */
+    }
   }
 
   return results;

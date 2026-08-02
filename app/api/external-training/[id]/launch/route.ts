@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { getExternalTrainingById } from "@/lib/lms-features-db";
+import { credentialsForLaunch } from "@/lib/external-training-credentials";
+import { userCanAccessExternalViaSubscription } from "@/lib/subscription-access";
 
 function escapeHtml(value: unknown) {
   return String(value)
@@ -12,23 +14,38 @@ function escapeHtml(value: unknown) {
     .replace(/'/g, "&#39;");
 }
 
+function isStaff(role: string | undefined) {
+  return role === "ADMIN" || role === "ASSISTANT_ADMIN";
+}
+
 export async function POST(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const session = await getServerSession(authOptions);
   if (!session?.user?.id) return new NextResponse("Unauthorized", { status: 401 });
+
   const training = await getExternalTrainingById((await params).id);
-  if (!training || !training.isPublished) return new NextResponse("Not found", { status: 404 });
-  let credentials: Record<string, unknown> = {};
-  try {
-    credentials = training.credentialsJson ? JSON.parse(training.credentialsJson) : {};
-  } catch {
+  if (!training || !training.isPublished) {
+    return new NextResponse("Not found", { status: 404 });
+  }
+
+  const staff = isStaff(session.user.role);
+  if (!staff) {
+    const allowed = await userCanAccessExternalViaSubscription(session.user.id, training.id);
+    if (!allowed) {
+      return new NextResponse(
+        "This external training is not included in your current subscription.",
+        { status: 403 },
+      );
+    }
+  }
+
+  const credentials = credentialsForLaunch(training.credentialsJson);
+  if (Object.keys(credentials).length === 0) {
     return new NextResponse("Invalid launch configuration", { status: 500 });
   }
-  if (!credentials || Array.isArray(credentials) || typeof credentials !== "object") {
-    return new NextResponse("Invalid launch configuration", { status: 500 });
-  }
+
   const inputs = Object.entries(credentials)
     .map(
       ([name, value]) =>

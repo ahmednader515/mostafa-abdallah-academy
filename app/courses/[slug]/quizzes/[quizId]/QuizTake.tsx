@@ -313,7 +313,11 @@ export function QuizTake({ quiz, courseSlug }: { quiz: QuizApiPayload; courseSlu
                 {t("quiz.certificateEarned", "Congratulations! You've earned a certificate for this course.")}
               </p>
               <Link
-                href={`/certificates/${encodeURIComponent(certificateRecordId || certificateId || "")}`}
+                href={
+                  certificateId
+                    ? `/certificate/${encodeURIComponent(certificateId)}`
+                    : `/certificates/${encodeURIComponent(certificateRecordId || "")}`
+                }
                 className="mt-3 inline-flex rounded-[var(--radius-btn)] bg-[#F59E0B] px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
               >
                 {t("quiz.viewCertificate", "View certificate")}

@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { signOut, useSession } from "next-auth/react";
+import { useSession } from "next-auth/react";
+import { signOutFully } from "@/lib/client-sign-out";
 
 export function IdleLogoutGuard({ idleMinutes }: { idleMinutes: number }) {
   const { status } = useSession();
@@ -14,7 +15,7 @@ export function IdleLogoutGuard({ idleMinutes }: { idleMinutes: number }) {
     const reset = () => {
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => {
-        void signOut({ callbackUrl: "/login?reason=idle" });
+        void signOutFully({ callbackUrl: "/login?reason=idle", reason: "idle" });
       }, ms);
     };
 

@@ -13,6 +13,15 @@ export type HomeTeacher = {
   courses: TeacherCardCourse[];
 };
 
+/** شبكة تتكيّف مع عدد المدربين الظاهرين (1–4) */
+function teachersGridClass(count: number): string {
+  const base = "mt-10 grid justify-items-center gap-6";
+  if (count <= 1) return `${base} mx-auto max-w-xs grid-cols-1`;
+  if (count === 2) return `${base} mx-auto max-w-2xl grid-cols-1 sm:grid-cols-2`;
+  if (count === 3) return `${base} mx-auto max-w-4xl grid-cols-1 sm:grid-cols-2 lg:grid-cols-3`;
+  return `${base} grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4`;
+}
+
 /** Homepage «Choose the trainers» section — only when the feature is enabled. */
 export function HomeTeachersSection({
   enabled,
@@ -70,7 +79,7 @@ export function HomeTeachersSection({
           </p>
         ) : (
           <>
-            <div className="mt-10 grid justify-items-center gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            <div className={teachersGridClass(visible.length)}>
               {visible.map((teacher) => (
                 <TeacherPublicCard
                   key={teacher.id}

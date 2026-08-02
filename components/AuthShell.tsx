@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { useState, type ReactNode } from "react";
-import { useT } from "@/components/LocaleProvider";
+import { useLocale, useT } from "@/components/LocaleProvider";
 import { SiteBrandMark } from "@/components/SiteBrandMark";
+import { useSiteBrand } from "@/components/SiteBrandProvider";
 
 const INPUT_CLASS =
-  "mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 transition focus:border-[#2563EB] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20";
+  "mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 transition focus:border-[#2563EB] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20 dark:border-white/10 dark:bg-[#0B1220] dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-[#3B82F6] dark:focus:ring-[#3B82F6]/25";
 
 export function AuthInput(props: React.InputHTMLAttributes<HTMLInputElement>) {
   const { className = "", ...rest } = props;
@@ -37,7 +38,7 @@ export function AuthPasswordInput({
 
   return (
     <div>
-      <label htmlFor={id} className="block text-sm font-medium text-slate-800">
+      <label htmlFor={id} className="block text-sm font-medium text-slate-800 dark:text-slate-200">
         {label}
       </label>
       <div className="relative mt-1.5">
@@ -55,7 +56,7 @@ export function AuthPasswordInput({
         <button
           type="button"
           onClick={() => setVisible((v) => !v)}
-          className="absolute inset-y-0 end-0 flex w-11 items-center justify-center text-slate-400 transition hover:text-slate-700"
+          className="absolute inset-y-0 end-0 flex w-11 items-center justify-center text-slate-400 transition hover:text-slate-700 dark:text-slate-500 dark:hover:text-slate-200"
           aria-label={
             visible
               ? t("auth.hidePassword", "Hide password")
@@ -102,6 +103,8 @@ export function AuthShell({
   footer?: ReactNode;
 }) {
   const t = useT();
+  const locale = useLocale();
+  const brand = useSiteBrand();
 
   const brandHeadline =
     variant === "register"
@@ -110,12 +113,21 @@ export function AuthShell({
         ? t("auth.brand.forgotHeadline", "استعادة الوصول لحسابك")
         : t("auth.brand.loginHeadline", "مرحباً بك مرة أخرى");
 
+  const defaultLoginBody = t(
+    "auth.brand.loginBody",
+    "من القاعة إلى قمرة القيادة — واصل رحلتك التعليمية باحتراف.",
+  );
+  const customLoginBody =
+    locale === "en"
+      ? brand.authLoginBodyEn || brand.authLoginBody
+      : brand.authLoginBody || brand.authLoginBodyEn;
+
   const brandBody =
     variant === "register"
       ? t("auth.brand.registerBody", "ابدأ مسارك التعليمي مع مدربين محترفين ومحتوى منظم.")
       : variant === "forgot"
         ? t("auth.brand.forgotBody", "سنساعدك على تحديث بياناتك والعودة للتعلم بسرعة وأمان.")
-        : t("auth.brand.loginBody", "واصل رحلتك التعليمية على منصة WorldWay باحتراف.");
+        : customLoginBody || defaultLoginBody;
 
   return (
     <div className="auth-page relative flex min-h-screen items-center justify-center overflow-hidden px-4 py-8 sm:px-6 sm:py-12">
@@ -123,7 +135,7 @@ export function AuthShell({
       <div className="auth-page-orb auth-page-orb-a pointer-events-none absolute -start-24 top-16 h-72 w-72 rounded-full" aria-hidden />
       <div className="auth-page-orb auth-page-orb-b pointer-events-none absolute -end-16 bottom-10 h-80 w-80 rounded-full" aria-hidden />
 
-      <div className="auth-card relative z-10 grid w-full max-w-5xl overflow-hidden rounded-[1.75rem] border border-white/60 bg-white shadow-[0_30px_80px_-28px_rgba(15,23,42,0.45)] md:grid-cols-2">
+      <div className="auth-card relative z-10 grid w-full max-w-5xl overflow-hidden rounded-[1.75rem] border border-white/60 bg-white shadow-[0_30px_80px_-28px_rgba(15,23,42,0.45)] dark:border-white/10 dark:bg-[#111827] dark:shadow-[0_30px_80px_-28px_rgba(0,0,0,0.75)] md:grid-cols-2">
         <aside className="auth-brand relative flex flex-col justify-center px-8 py-10 text-white sm:px-10 md:py-14">
           <div className="auth-brand-glow pointer-events-none absolute inset-0" aria-hidden />
           <div className="relative z-10 flex flex-col items-center text-center">
@@ -137,17 +149,19 @@ export function AuthShell({
           </div>
         </aside>
 
-        <div className="relative flex flex-col bg-white px-6 py-8 sm:px-10 sm:py-10">
+        <div className="relative flex flex-col bg-white px-6 py-8 dark:bg-[#111827] sm:px-10 sm:py-10">
           <Link
             href="/"
-            className="mb-6 inline-flex text-sm font-medium text-slate-500 transition hover:text-[#2563EB] md:hidden"
+            className="mb-6 inline-flex text-sm font-medium text-slate-500 transition hover:text-[#2563EB] dark:text-slate-400 dark:hover:text-[#60A5FA] md:hidden"
           >
             {t("auth.backHome", "العودة للرئيسية")}
           </Link>
-          <h1 className="text-2xl font-bold text-slate-900">{title}</h1>
-          <p className="mt-1.5 text-sm text-slate-500">{subtitle}</p>
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-white">{title}</h1>
+          <p className="mt-1.5 text-sm text-slate-500 dark:text-slate-400">{subtitle}</p>
           <div className="mt-6 flex-1">{children}</div>
-          {footer ? <div className="mt-6 text-center text-sm text-slate-500">{footer}</div> : null}
+          {footer ? (
+            <div className="mt-6 text-center text-sm text-slate-500 dark:text-slate-400">{footer}</div>
+          ) : null}
         </div>
       </div>
     </div>

@@ -20,11 +20,12 @@ export async function POST(request: NextRequest) {
   const body = await request.json();
   const result = await createConsultation({
     title: String(body.titleEn || body.title || body.titleAr || "Consultation"),
-    titleAr: String(body.titleAr || ""),
+    titleAr: body.titleAr != null ? String(body.titleAr) : null,
     description: String(body.descriptionEn || body.description || ""),
-    descriptionAr: String(body.descriptionAr || ""),
+    descriptionAr: body.descriptionAr != null ? String(body.descriptionAr) : null,
     imageUrl: body.imageUrl || null,
     scheduleText: body.scheduledAt || body.scheduleText || null,
+    scheduleTextAr: body.scheduleTextAr != null ? String(body.scheduleTextAr) : null,
     price: Number(body.price) || 0,
     isPublished: true,
   });

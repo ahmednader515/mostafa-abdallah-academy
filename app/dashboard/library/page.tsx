@@ -10,11 +10,18 @@ import {
   getStoreSalesStats,
 } from "@/lib/db";
 import { getServerTranslator } from "@/lib/i18n/server";
+import { requireStaffPermission } from "@/lib/require-permission";
 import { LibraryAdminClient } from "./LibraryAdminClient";
 
 export default async function LibraryDashboardPage() {
   const session = await getServerSession(authOptions);
-  if (!session || session.user.role !== "ADMIN") redirect("/dashboard");
+  if (!session?.user?.id) redirect("/login");
+  const gate = await requireStaffPermission(
+    session.user.id,
+    session.user.role,
+    "canManageLibrary",
+  );
+  if (!gate.ok) redirect("/dashboard");
 
   const t = await getServerTranslator();
 
